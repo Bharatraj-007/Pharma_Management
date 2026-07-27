@@ -34,10 +34,28 @@ function Profile() {
     shiftTiming: "09:00:00"
   });
 
+  const [holidaysList, setHolidaysList] = useState([]);
+  const [holidayDate, setHolidayDate] = useState("");
+  const [holidayReason, setHolidayReason] = useState("");
+
   const headers = {
     "Content-Type": "application/json",
     Authorization: token
   };
+
+  const fetchHolidays = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/holidays`, {
+        headers: { Authorization: token }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setHolidaysList(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch holidays:", err);
+    }
+  }, [token]);
 
   // Fetch profile
   const fetchProfile = useCallback(async () => {
@@ -98,7 +116,8 @@ function Profile() {
 
   useEffect(() => {
     fetchProfile();
-  }, [fetchProfile]);
+    fetchHolidays();
+  }, [fetchProfile, fetchHolidays]);
 
   // Save editable profile fields
   const handleSaveProfile = async (e) => {
@@ -194,6 +213,54 @@ function Profile() {
       setError(err.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Add a holiday
+  const handleAddHoliday = async (e) => {
+    e.preventDefault();
+    if (!holidayDate || !holidayReason) return alert("Select a date and enter a reason");
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch(`${API_BASE_URL}/holidays`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ date: holidayDate, reason: holidayReason })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSuccess("Holiday added successfully!");
+        setHolidayDate("");
+        setHolidayReason("");
+        fetchHolidays();
+      } else {
+        throw new Error(data.error || "Failed to add holiday");
+      }
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  // Delete a holiday
+  const handleDeleteHoliday = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this holiday?")) return;
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch(`${API_BASE_URL}/holidays/${id}`, {
+        method: "DELETE",
+        headers
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSuccess("Holiday deleted successfully!");
+        fetchHolidays();
+      } else {
+        throw new Error(data.error || "Failed to delete holiday");
+      }
+    } catch (err) {
+      setError(err.message);
     }
   };
 
@@ -970,15 +1037,79 @@ function Profile() {
                   </div>
                 </div>
 
-                <div className="sp-form-group mt-3">
-                  <label className="sp-label">Holidays List (comma-separated, YYYY-MM-DD)</label>
-                  <input
-                    type="text"
-                    className="sp-input"
-                    placeholder="e.g. 2026-08-15, 2026-10-02"
-                    value={companyForm.holidays}
-                    onChange={(e) => setCompanyForm({ ...companyForm, holidays: e.target.value })}
-                  />
+                <div className="sp-card mt-5" style={{ background: "var(--color-surface-alt)", padding: "20px", borderRadius: "8px", border: "1px dashed var(--color-border)" }}>
+                  <h4 style={{ display: "flex", alignItems: "center", gap: "8px", margin: "0 0 8px 0" }}>🗓️ Holiday Management</h4>
+                  <p className="text-muted text-xs mb-4">Add, view, and remove company holiday dates in advance. These will automatically be marked as Paid Leave for all staff.</p>
+                  
+                  {/* Add holiday form */}
+                  <div style={{ display: "flex", gap: "12px", alignItems: "flex-end", flexWrap: "wrap", marginBottom: "20px" }}>
+                    <div className="sp-form-group" style={{ margin: 0, flex: "1 1 180px" }}>
+                      <label className="sp-label">Select Date</label>
+                      <input
+                        type="date"
+                        className="sp-input"
+                        value={holidayDate}
+                        onChange={(e) => setHolidayDate(e.target.value)}
+                      />
+                    </div>
+                    <div className="sp-form-group" style={{ margin: 0, flex: "2 1 250px" }}>
+                      <label className="sp-label">Holiday Name / Occasion</label>
+                      <input
+                        type="text"
+                        className="sp-input"
+                        placeholder="e.g. Independence Day, Diwali"
+                        value={holidayReason}
+                        onChange={(e) => setHolidayReason(e.target.value)}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      className="sp-btn sp-btn-primary"
+                      onClick={handleAddHoliday}
+                      style={{ padding: "0 16px", height: "42px", display: "flex", alignItems: "center", gap: "6px" }}
+                    >
+                      <span>➕</span> Add Holiday
+                    </button>
+                  </div>
+
+                  {/* Holiday list */}
+                  <div className="sp-table-wrap" style={{ maxHeight: "250px", overflowY: "auto" }}>
+                    <table className="sp-table" style={{ background: "var(--color-surface)", borderRadius: "4px" }}>
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>Occasion</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {holidaysList.length === 0 ? (
+                          <tr>
+                            <td colSpan="3" className="empty-cell" style={{ padding: "12px", textAlign: "center", color: "var(--color-text-muted)" }}>
+                              No holidays pre-configured.
+                            </td>
+                          </tr>
+                        ) : (
+                          holidaysList.map((h) => (
+                            <tr key={h._id}>
+                              <td><strong>{h.date}</strong></td>
+                              <td><span className="sp-badge sp-badge-neutral">{h.reason}</span></td>
+                              <td>
+                                <button
+                                  type="button"
+                                  className="sp-btn sp-btn-danger sp-btn-sm"
+                                  onClick={() => handleDeleteHoliday(h._id)}
+                                  style={{ padding: "4px 8px", fontSize: "0.8rem" }}
+                                >
+                                  🗑️ Remove
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
 
                 <div style={{ display: "flex", gap: "10px" }} className="mt-4">

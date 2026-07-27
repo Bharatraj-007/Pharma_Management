@@ -1,4 +1,6 @@
-const API_BASE_URL = "http://localhost:5001";
+const API_BASE_URL = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+  ? "http://localhost:5001"
+  : `http://${window.location.hostname}:5001`;
 
 export default API_BASE_URL;
 

@@ -18,7 +18,8 @@ const attendanceSchema = new mongoose.Schema({
   hoursWorked: { type: Number, default: 0 },
   earnings: { type: Number, default: 0 },
   salaryRate: { type: Number, default: 0 },
-  salaryType: { type: String, default: "daily" }
+  salaryType: { type: String, default: "daily" },
+  otRate: { type: Number, default: 0 }
 }, { timestamps: true });
 
 attendanceSchema.index({ workerName: 1, company: 1, date: 1 }, { unique: true });

@@ -16,9 +16,11 @@
       },
       "env": {
         "NODE_ENV": "development"
-      }
+      },
+      "channel": "development"
     },
     "preview": {
+      "channel": "preview",
       "distribution": "internal",
       "android": {
         "buildType": "apk"
@@ -31,6 +33,7 @@
       }
     },
     "production": {
+      "channel": "production",
       "distribution": "store",
       "android": {
         "buildType": "app-bundle"

@@ -320,11 +320,15 @@ export default function ChatScreen() {
     setUploading(true);
     setError('');
     try {
+      const filename = localUri.split('/').pop() || originalName || 'file';
+      const fileExt = filename.split('.').pop() || 'm4a';
+      const mimeType = type === 'image' ? 'image/jpeg' : type === 'video' ? 'video/mp4' : type === 'voice' ? `audio/${fileExt === 'm4a' ? 'mp4' : fileExt}` : 'application/octet-stream';
+
       const formData = new FormData();
       formData.append('file', {
-        uri: Platform.OS === 'ios' ? localUri.replace('file://', '') : localUri,
-        type: type === 'image' ? 'image/jpeg' : type === 'video' ? 'video/mp4' : type === 'voice' ? 'audio/m4a' : 'application/octet-stream',
-        name: originalName || 'file'
+        uri: localUri,
+        type: mimeType,
+        name: filename
       });
 
       const res = await fetch(`${API_BASE_URL}/api/messages/upload`, {
@@ -547,7 +551,7 @@ export default function ChatScreen() {
   const renderMessage = ({ item }) => {
     const isMine = String(item.senderId) === String(myUserId);
     const senderName = activeConv?.participants?.find(p => String(p._id) === String(item.senderId))?.name || 'User';
-    const mediaFullUrl = item.mediaUrl ? `${API_BASE_URL.replace('/api', '')}${item.mediaUrl}` : '';
+    const mediaFullUrl = item.mediaUrl ? (item.mediaUrl.startsWith('http') ? item.mediaUrl : `${API_BASE_URL.replace('/api', '')}${item.mediaUrl}`) : '';
 
     return (
       <View style={[s.bubble, isMine ? s.bubbleMine : s.bubbleOther]}>

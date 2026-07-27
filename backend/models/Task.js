@@ -63,8 +63,8 @@ const taskSchema = new mongoose.Schema({
     type: String,
     enum: ['pending', 'assigned', 'in-progress', 'completed'],
     default: 'pending'
-  }
+  },
+  completedAt: Date
 }, { timestamps: true });
 
 module.exports = mongoose.model("Task", taskSchema);
-

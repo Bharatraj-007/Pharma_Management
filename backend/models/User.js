@@ -25,8 +25,9 @@ const userSchema = new mongoose.Schema({
   profilePhoto: { type: String, default: "" },
   reportingManager: { type: String, default: "" },
   employmentType: { type: String, default: "Full-time" }, // Full-time / Part-time / Contract
-  salaryRate: { type: Number, default: 0 },       // amount per hour or day
-  salaryType: { type: String, enum: ["hourly", "daily"], default: "daily" },
+  salaryRate: { type: Number, default: 0 },       // amount per hour, day or month
+  salaryType: { type: String, enum: ["hourly", "daily", "monthly"], default: "daily" },
+  otRate: { type: Number, default: 0 },           // overtime rate per hour
   currency: { type: String, default: "INR" },
   
   // Settings & Preferences

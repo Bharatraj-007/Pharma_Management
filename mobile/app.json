@@ -30,7 +30,12 @@
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE"
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -50,7 +55,27 @@
         {
           "photosPermission": "Allow Smart Pharma to access photos to attach to tasks."
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "44472d30-2290-463e-a5f7-41d547cae5e6"
+      }
+    },
+    "owner": "bharat1107",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/44472d30-2290-463e-a5f7-41d547cae5e6"
+    }
   }
 }

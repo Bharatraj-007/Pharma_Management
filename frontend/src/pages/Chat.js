@@ -500,6 +500,7 @@ function Chat() {
                 {messages.map((m, idx) => {
                   const authorIsMe = String(m.senderId) === String(myUserId);
                   const senderName = activeConv.participants?.find(p => String(p._id) === String(m.senderId))?.name || "User";
+                  const resolvedMediaUrl = m.mediaUrl ? (m.mediaUrl.startsWith("http") ? m.mediaUrl : `${API_BASE_URL.replace("/api", "")}${m.mediaUrl}`) : "";
 
                   return (
                     <div
@@ -523,24 +524,24 @@ function Chat() {
                       {m.text ? <p style={{ margin: "0 0 4px 0", fontSize: "14px", whiteSpace: "pre-wrap" }}>{m.text}</p> : null}
                       
                       {m.type === "image" && (
-                        <img src={`${API_BASE_URL.replace("/api", "")}${m.mediaUrl}`} alt="Attachment" style={{ maxWidth: "100%", maxHeight: "240px", borderRadius: "8px", marginTop: "4px", cursor: "pointer" }} onClick={() => window.open(`${API_BASE_URL.replace("/api", "")}${m.mediaUrl}`, "_blank")} />
+                        <img src={resolvedMediaUrl} alt="Attachment" style={{ maxWidth: "100%", maxHeight: "240px", borderRadius: "8px", marginTop: "4px", cursor: "pointer" }} onClick={() => window.open(resolvedMediaUrl, "_blank")} />
                       )}
                       
                       {m.type === "video" && (
-                        <video src={`${API_BASE_URL.replace("/api", "")}${m.mediaUrl}`} controls style={{ maxWidth: "100%", maxHeight: "240px", borderRadius: "8px", marginTop: "4px" }} />
+                        <video src={resolvedMediaUrl} controls style={{ maxWidth: "100%", maxHeight: "240px", borderRadius: "8px", marginTop: "4px" }} />
                       )}
                       
                       {m.type === "file" && (
                         <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "rgba(0,0,0,0.1)", padding: "8px 12px", borderRadius: "8px", marginTop: "4px" }}>
                           <span style={{ fontSize: "20px" }}>📄</span>
-                          <a href={`${API_BASE_URL.replace("/api", "")}${m.mediaUrl}`} target="_blank" rel="noreferrer" style={{ color: authorIsMe ? "#fff" : "var(--color-primary)", textDecoration: "underline", fontSize: "13px", fontWeight: "600", overflow: "hidden", textOverflow: "ellipsis", display: "inline-block", maxWidth: "150px" }}>
+                          <a href={resolvedMediaUrl} target="_blank" rel="noreferrer" style={{ color: authorIsMe ? "#fff" : "var(--color-primary)", textDecoration: "underline", fontSize: "13px", fontWeight: "600", overflow: "hidden", textOverflow: "ellipsis", display: "inline-block", maxWidth: "150px" }}>
                             {m.fileName || "Download Attachment"}
                           </a>
                         </div>
                       )}
                       
                       {m.type === "voice" && (
-                        <audio src={`${API_BASE_URL.replace("/api", "")}${m.mediaUrl}`} controls style={{ marginTop: "4px", maxWidth: "100%" }} />
+                        <audio src={resolvedMediaUrl} controls style={{ marginTop: "4px", maxWidth: "100%" }} />
                       )}
                     </div>
                   );

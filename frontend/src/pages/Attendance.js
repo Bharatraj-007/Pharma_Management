@@ -22,8 +22,12 @@ function Attendance() {
   const [selectedStatus, setSelectedStatus] = useState("Present");
   const [notes, setNotes] = useState("");
 
-  // Table Date Filter
-  const [filterDate, setFilterDate] = useState(new Date().toISOString().split("T")[0]);
+  // Filters & Search State
+  const [searchQuery, setSearchQuery] = useState("");
+  const [fromDate, setFromDate] = useState(new Date().toISOString().split("T")[0]);
+  const [toDate, setToDate] = useState(new Date().toISOString().split("T")[0]);
+  const [filterStatus, setFilterStatus] = useState("All");
+  const [filterWorker, setFilterWorker] = useState("All");
 
   // Edit Modal State
   const [editingRecord, setEditingRecord] = useState(null);
@@ -47,13 +51,26 @@ function Attendance() {
     return () => clearInterval(interval);
   }, []);
 
-  // 2. Fetch attendance list for filterDate
+  // 2. Fetch attendance list with search & filters
   const fetchAttendance = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE_URL}/attendance?date=${filterDate}`, {
+      const query = new URLSearchParams();
+      
+      if (fromDate && toDate) {
+        query.set("from", fromDate);
+        query.set("to", toDate);
+      } else {
+        query.set("date", new Date().toISOString().split("T")[0]);
+      }
+      
+      if (searchQuery) query.set("search", searchQuery);
+      if (filterStatus && filterStatus !== "All") query.set("status", filterStatus);
+      if (filterWorker && filterWorker !== "All") query.set("workerName", filterWorker);
+
+      const res = await fetch(`${API_BASE_URL}/attendance?${query.toString()}`, {
         headers: { Authorization: token },
       });
       if (!res.ok) throw new Error("Unable to load attendance records.");
@@ -64,7 +81,7 @@ function Attendance() {
     } finally {
       setLoading(false);
     }
-  }, [filterDate]);
+  }, [fromDate, toDate, searchQuery, filterStatus, filterWorker]);
 
   // 3. Fetch workers list (for admin/manager/ceo dropdown)
   const fetchWorkers = useCallback(async () => {
@@ -372,19 +389,79 @@ function Attendance() {
 
       {/* Records Table */}
       <div className="sp-card">
-        <div className="sp-card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h3>📅 Attendance — {filterDate}</h3>
-          <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-            <input
-              type="date"
-              className="sp-input"
-              value={filterDate}
-              onChange={(e) => setFilterDate(e.target.value)}
-              style={{ width: "auto" }}
-            />
-            <button className="sp-btn sp-btn-primary" onClick={fetchAttendance} type="button">
-              Refresh
+        <div className="sp-card-header" style={{ display: "block" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+            <h3>📅 Attendance Records ({fromDate} to {toDate})</h3>
+            <button className="sp-btn sp-btn-primary sp-btn-sm" onClick={fetchAttendance} type="button">
+              🔄 Refresh
             </button>
+          </div>
+          
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "16px", marginBottom: "8px" }}>
+            <div className="sp-form-group" style={{ margin: 0 }}>
+              <label className="sp-label" style={{ fontSize: "0.8rem" }}>Search Employee</label>
+              <input
+                type="text"
+                placeholder="Name or Emp No..."
+                className="sp-input"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            
+            <div className="sp-form-group" style={{ margin: 0 }}>
+              <label className="sp-label" style={{ fontSize: "0.8rem" }}>From Date</label>
+              <input
+                type="date"
+                className="sp-input"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+              />
+            </div>
+            
+            <div className="sp-form-group" style={{ margin: 0 }}>
+              <label className="sp-label" style={{ fontSize: "0.8rem" }}>To Date</label>
+              <input
+                type="date"
+                className="sp-input"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+              />
+            </div>
+
+            <div className="sp-form-group" style={{ margin: 0 }}>
+              <label className="sp-label" style={{ fontSize: "0.8rem" }}>Status</label>
+              <select
+                className="sp-select"
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+              >
+                <option value="All">All Statuses</option>
+                <option value="Present">Present</option>
+                <option value="Absent">Absent</option>
+                <option value="Half Day">Half Day</option>
+                <option value="Paid Leave">Paid Leave</option>
+                <option value="Leave">Leave</option>
+              </select>
+            </div>
+
+            {userRole !== "worker" && (
+              <div className="sp-form-group" style={{ margin: 0 }}>
+                <label className="sp-label" style={{ fontSize: "0.8rem" }}>Employee / Manager</label>
+                <select
+                  className="sp-select"
+                  value={filterWorker}
+                  onChange={(e) => setFilterWorker(e.target.value)}
+                >
+                  <option value="All">All Staff</option>
+                  {workers.map((w) => (
+                    <option key={w._id} value={w.name}>
+                      {w.name} ({w.role})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         </div>
 

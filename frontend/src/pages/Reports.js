@@ -34,7 +34,7 @@ function Reports() {
   const [staff, setStaff] = useState([]);
   const [staffLoading, setStaffLoading] = useState(false);
   const [salaryEditing, setSalaryEditing] = useState(null); // id of staff being edited
-  const [salaryForm, setSalaryForm] = useState({ salaryRate: 0, salaryType: "daily" });
+  const [salaryForm, setSalaryForm] = useState({ salaryRate: 0, salaryType: "daily", otRate: 0 });
 
   const headers = { "Content-Type": "application/json", Authorization: token };
 
@@ -384,12 +384,13 @@ function Reports() {
                       <th>Role</th>
                       <th>Pay Type</th>
                       <th>Rate (₹)</th>
+                      <th>OT Rate (₹/h)</th>
                       <th>Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {staff.length === 0 ? (
-                      <tr><td className="empty-cell" colSpan="5">No staff</td></tr>
+                      <tr><td className="empty-cell" colSpan="6">No staff</td></tr>
                     ) : (
                       staff.map(s => (
                         <tr key={s._id}>
@@ -400,9 +401,12 @@ function Reports() {
                               <select value={salaryForm.salaryType} onChange={e => setSalaryForm({ ...salaryForm, salaryType: e.target.value })} className="sp-select" style={{ width: 120 }}>
                                 <option value="daily">Per Day</option>
                                 <option value="hourly">Per Hour</option>
+                                <option value="monthly">Fixed Monthly</option>
                               </select>
                             ) : (
-                              <span className="sp-badge sp-badge-neutral">{s.salaryType === "hourly" ? "Per Hour" : "Per Day"}</span>
+                              <span className="sp-badge sp-badge-neutral">
+                                {s.salaryType === "hourly" ? "Per Hour" : s.salaryType === "monthly" ? "Fixed Monthly" : "Per Day"}
+                              </span>
                             )}
                           </td>
                           <td>
@@ -416,12 +420,21 @@ function Reports() {
                           </td>
                           <td>
                             {salaryEditing === s._id ? (
+                              <input type="number" value={salaryForm.otRate} onChange={e => setSalaryForm({ ...salaryForm, otRate: e.target.value })} className="sp-input" style={{ width: 120 }} min="0" step="1" />
+                            ) : (
+                              <span style={{ fontWeight: 700, fontSize: "var(--font-lg)" }}>
+                                {s.otRate > 0 ? `₹${s.otRate}` : <span className="text-muted">Not set</span>}
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            {salaryEditing === s._id ? (
                               <div className="flex gap-2">
                                 <button className="sp-btn sp-btn-success sp-btn-sm" onClick={() => updateSalary(s._id)}>Save</button>
                                 <button className="sp-btn sp-btn-secondary sp-btn-sm" onClick={() => setSalaryEditing(null)}>Cancel</button>
                               </div>
                             ) : (
-                              <button className="sp-btn sp-btn-primary sp-btn-sm" onClick={() => { setSalaryEditing(s._id); setSalaryForm({ salaryRate: s.salaryRate || 0, salaryType: s.salaryType || "daily" }); }}>
+                              <button className="sp-btn sp-btn-primary sp-btn-sm" onClick={() => { setSalaryEditing(s._id); setSalaryForm({ salaryRate: s.salaryRate || 0, salaryType: s.salaryType || "daily", otRate: s.otRate || 0 }); }}>
                                 ✏️ Set Rate
                               </button>
                             )}

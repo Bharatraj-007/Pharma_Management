@@ -27,14 +27,38 @@ function Tasks() {
     { value: 'vel', label: 'Vel Gravure' }
   ];
 
+  const [workers, setWorkers] = useState([]);
+  const [selectedWorkerFilter, setSelectedWorkerFilter] = useState("All");
+
+  useEffect(() => {
+    fetchWorkers();
+  }, []);
+
   useEffect(() => {
     fetchTasks();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [selectedWorkerFilter]);
+
+  const fetchWorkers = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/workers`, {
+        headers: { Authorization: token }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setWorkers(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.error("Failed to load workers:", err);
+    }
+  };
 
   const fetchTasks = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/tasks`, {
+      let url = `${API_BASE_URL}/tasks`;
+      if (selectedWorkerFilter && selectedWorkerFilter !== "All") {
+        url += `?assignedTo=${selectedWorkerFilter}`;
+      }
+      const res = await fetch(url, {
         headers: { Authorization: token }
       });
       const data = await res.json();
@@ -250,10 +274,51 @@ function Tasks() {
     }
   };
 
+  const totalAssigned = tasks.length;
+  const totalCompleted = tasks.filter(t => t.status === "completed").length;
+  const totalPending = tasks.filter(t => t.status !== "completed").length;
+
   return (
     <div>
       <div className="page-header">
         <h1>📋 Tasks</h1>
+      </div>
+
+      {/* Employee/Manager Filter Dropdown */}
+      <div className="sp-card mb-5" style={{ background: "var(--color-surface-alt)", padding: "20px", borderRadius: "8px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+          <label className="sp-label" style={{ margin: 0, fontWeight: 700 }}>🔍 Filter by Employee/Manager:</label>
+          <select
+            className="sp-select"
+            value={selectedWorkerFilter}
+            onChange={(e) => setSelectedWorkerFilter(e.target.value)}
+            style={{ width: "auto", minWidth: "220px" }}
+          >
+            <option value="All">🌐 Show All Tasks</option>
+            {workers.map((w) => (
+              <option key={w._id} value={w._id}>
+                👤 {w.name} ({w.role})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {selectedWorkerFilter !== "All" && (
+          <div className="sp-card-grid mt-4" style={{ gridTemplateColumns: "repeat(3, 1fr)", gap: "16px" }}>
+            <div className="sp-card" style={{ background: "#fff", textAlign: "center", padding: "16px", borderRadius: "6px" }}>
+              <h2 style={{ margin: 0, color: "var(--color-primary)", fontSize: "2rem" }}>{totalAssigned}</h2>
+              <span className="text-muted text-xs uppercase font-bold tracking-wider">Total Assigned</span>
+            </div>
+            <div className="sp-card" style={{ background: "#fff", textAlign: "center", padding: "16px", borderRadius: "6px" }}>
+              <h2 style={{ margin: 0, color: "var(--color-success)", fontSize: "2rem" }}>{totalCompleted}</h2>
+              <span className="text-muted text-xs uppercase font-bold tracking-wider">Tasks Completed</span>
+            </div>
+            <div className="sp-card" style={{ background: "#fff", textAlign: "center", padding: "16px", borderRadius: "6px" }}>
+              <h2 style={{ margin: 0, color: "var(--color-warning)", fontSize: "2rem" }}>{totalPending}</h2>
+              <span className="text-muted text-xs uppercase font-bold tracking-wider">Tasks Pending</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {isManager && (
@@ -355,8 +420,13 @@ function Tasks() {
               className="sp-select"
             >
               <option value="" disabled>Select worker</option>
+              {workers.map((w) => (
+                <option key={w._id} value={w.name}>
+                  {w.name} ({w.role})
+                </option>
+              ))}
               <option value={`Worker (${formData.company === 'shree_ganaapathy' ? 'shree' : formData.company})`}>
-                Worker ({formData.company === 'shree_ganaapathy' ? 'shree' : formData.company})
+                Default Worker ({formData.company === 'shree_ganaapathy' ? 'shree' : formData.company})
               </option>
             </select>
           </div>
@@ -390,8 +460,7 @@ function Tasks() {
 
               {task.image_path && (
                 <img
-                  src={`${API_BASE_URL}/${task.image_path}`}
-
+                  src={task.image_path.startsWith("http") ? task.image_path : `${API_BASE_URL}/${task.image_path}`}
                   alt="sample"
                   style={{ maxWidth: "150px", borderRadius: "8px", marginBottom: "12px" }}
                 />
@@ -403,6 +472,9 @@ function Tasks() {
                 <p><strong>Required:</strong> {task.required_kg} KG</p>
                 <p><strong>Job Type:</strong> {task.colourCount || 1} Colour Job</p>
                 {task.worker_name && <p><strong>Worker:</strong> {task.worker_name}</p>}
+                {task.status === "completed" && task.completedAt && (
+                  <p><strong>Completed At:</strong> {new Date(task.completedAt).toLocaleString("en-IN")}</p>
+                )}
               </div>
 
               {renderFoilUsageSummary(task)}

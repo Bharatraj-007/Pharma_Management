@@ -460,8 +460,7 @@ function WorkerDashboard() {
 
             {task.image_path && (
               <iframe
-                src={`${API_BASE_URL}/${task.image_path}`}
-
+                src={task.image_path.startsWith("http") ? task.image_path : `${API_BASE_URL}/${task.image_path}`}
                 width="100%"
                 height="300px"
                 title="PDF"

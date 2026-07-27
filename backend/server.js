@@ -18,10 +18,50 @@ const Cylinder = require("./models/Cylinder");
 const AuditLog = require("./models/AuditLog");
 const Task = require("./models/Task");
 const LeaveRequest = require("./models/LeaveRequest");
+const Holiday = require("./models/Holiday");
 const ExcelJS = require("exceljs");
 const PDFDocument = require("pdfkit");
 const path = require("path");
 const multer = require("multer");
+const cloudinary = require("cloudinary").v2;
+const fs = require("fs");
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || "spqrcbtg",
+  api_key: process.env.CLOUDINARY_API_KEY || "321647567917158",
+  api_secret: process.env.CLOUDINARY_API_SECRET || "-xsYqCcE9239mjvFQYYhJJBCEGE"
+});
+
+const COMPANY_CLOUDINARY_FOLDERS = {
+  bharath: "bharath_enterprises",
+  shree_ganaapathy: "shree_ganapathiroto",
+  vel: "vel_gravure"
+};
+
+async function uploadToCloudinary(filePath, companyKey) {
+  if (!filePath) return null;
+  const folder = COMPANY_CLOUDINARY_FOLDERS[companyKey] || "bharath_enterprises";
+  try {
+    const result = await cloudinary.uploader.upload(filePath, {
+      folder: folder,
+      resource_type: "auto"
+    });
+    try {
+      fs.unlinkSync(filePath);
+    } catch (err) {
+      console.warn("Could not delete local file:", err.message);
+    }
+    return result.secure_url;
+  } catch (err) {
+    console.error("Cloudinary upload error:", err);
+    try {
+      fs.unlinkSync(filePath);
+    } catch (e) {}
+    const errMsg = err.message || (err.error && err.error.message) || JSON.stringify(err);
+    throw new Error(errMsg);
+  }
+}
+
 const app = express();
 const http = require("http");
 const socketIo = require("socket.io");
@@ -443,7 +483,7 @@ app.get(["/api/conversations", "/api/conversations/:userId"], verifyToken, async
     const formattedList = await Promise.all(conversations.map(async (conv) => {
       const lastMsg = await Message.findOne({ conversationId: conv._id })
         .sort({ timestamp: -1 })
-        .select("senderId text timestamp");
+        .select("senderId text type timestamp");
         
       return {
         id: conv._id,
@@ -453,7 +493,9 @@ app.get(["/api/conversations", "/api/conversations/:userId"], verifyToken, async
         participants: conv.participants,
         groupAdmin: conv.groupAdmin,
         createdAt: conv.createdAt,
-        lastMessage: lastMsg ? lastMsg.text : "",
+        lastMessage: lastMsg 
+          ? (lastMsg.text || (lastMsg.type === "voice" ? "🔊 Voice Message" : lastMsg.type === "image" ? "📷 Photo" : lastMsg.type === "video" ? "🎥 Video" : "📄 Attachment"))
+          : "",
         lastMessageTime: lastMsg ? lastMsg.timestamp : conv.createdAt
       };
     }));
@@ -482,7 +524,8 @@ app.post("/api/messages/upload", verifyToken, chatUpload, async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded" });
     }
-    const mediaUrl = `/uploads/${req.file.filename}`;
+    const company = await getRequestCompany(req);
+    const mediaUrl = await uploadToCloudinary(req.file.path, company);
     res.json({ mediaUrl, fileName: req.file.originalname });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -553,7 +596,7 @@ app.get("/api/messages/:conversationId", verifyToken, async (req, res) => {
       conversationId
     })
       .sort({ timestamp: 1 })
-      .select("senderId conversationId text timestamp createdAt readBy");
+      .select("senderId conversationId text type mediaUrl fileName duration timestamp createdAt readBy");
 
     return res.json({ messages: msgs });
   } catch (err) {
@@ -783,6 +826,81 @@ app.put(["/api/company/settings", "/company/settings"], verifyToken, allowRoles(
   }
 });
 
+// Holiday Management Routes
+app.get(["/api/holidays", "/holidays"], verifyToken, async (req, res) => {
+  try {
+    const company = await getRequestCompany(req);
+    const list = await Holiday.find({ company }).sort({ date: 1 });
+    res.json(list);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post(["/api/holidays", "/holidays"], verifyToken, allowRoles("admin", "ceo"), async (req, res) => {
+  try {
+    const { date, reason } = req.body;
+    if (!date || !reason) {
+      return res.status(400).json({ error: "Date and reason are required" });
+    }
+    const company = await getRequestCompany(req);
+    
+    const existing = await Holiday.findOne({ date, company });
+    if (existing) {
+      return res.status(400).json({ error: "A holiday already exists for this date" });
+    }
+    
+    const holiday = new Holiday({ date, reason, company });
+    await holiday.save();
+    res.status(201).json({ message: "Holiday added successfully", holiday });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put(["/api/holidays/:id", "/holidays/:id"], verifyToken, allowRoles("admin", "ceo"), async (req, res) => {
+  try {
+    const { date, reason } = req.body;
+    if (!date || !reason) {
+      return res.status(400).json({ error: "Date and reason are required" });
+    }
+    const company = await getRequestCompany(req);
+    
+    const holiday = await Holiday.findById(req.params.id);
+    if (!holiday) return res.status(404).json({ error: "Holiday not found" });
+    if (holiday.company !== company) return res.status(403).json({ error: "Access denied" });
+    
+    if (date !== holiday.date) {
+      const existing = await Holiday.findOne({ date, company });
+      if (existing) {
+        return res.status(400).json({ error: "A holiday already exists for this date" });
+      }
+    }
+    
+    holiday.date = date;
+    holiday.reason = reason;
+    await holiday.save();
+    
+    res.json({ message: "Holiday updated successfully", holiday });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete(["/api/holidays/:id", "/holidays/:id"], verifyToken, allowRoles("admin", "ceo"), async (req, res) => {
+  try {
+    const company = await getRequestCompany(req);
+    const holiday = await Holiday.findById(req.params.id);
+    if (!holiday) return res.status(404).json({ error: "Holiday not found" });
+    if (holiday.company !== company) return res.status(403).json({ error: "Access denied" });
+    
+    await Holiday.findByIdAndDelete(req.params.id);
+    res.json({ message: "Holiday deleted successfully" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/profile/approvals - List pending approvals (Admin/CEO only)
 app.get("/api/profile/approvals", verifyToken, allowRoles("admin", "ceo"), async (req, res) => {
   try {
@@ -852,7 +970,9 @@ app.post(["/profile/upload-id", "/api/profile/upload-id"], verifyToken, privateU
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: "User not found" });
     
-    user.idProofUrl = `/profile/id-proof/${req.file.filename}`;
+    const company = await getRequestCompany(req);
+    const idProofUrl = await uploadToCloudinary(req.file.path, company);
+    user.idProofUrl = idProofUrl;
     await user.save();
     
     res.json({ message: "ID proof uploaded successfully", idProofUrl: user.idProofUrl });
@@ -911,12 +1031,13 @@ app.get("/staff/:id", verifyToken, allowRoles("admin", "ceo"), async (req, res) 
 // PUT /staff/:id/salary — CEO and Admin set salary rate for staff
 app.put("/staff/:id/salary", verifyToken, allowRoles("admin", "ceo"), async (req, res) => {
   try {
-    const { salaryRate, salaryType } = req.body;
+    const { salaryRate, salaryType, otRate } = req.body;
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ error: "User not found" });
 
     if (salaryRate !== undefined) user.salaryRate = Number(salaryRate);
     if (salaryType) user.salaryType = salaryType;
+    if (otRate !== undefined) user.otRate = Number(otRate);
 
     await user.save();
     const updated = user.toObject();
@@ -1153,14 +1274,30 @@ app.get("/api/dashboard/summary", verifyToken, async (req, res) => {
   }
 });
 
-// GET all tasks
-app.get("/tasks", verifyToken, async (req, res) => {
+// GET all tasks (supports /api/tasks and assignedTo filtering)
+app.get(["/tasks", "/api/tasks"], verifyToken, async (req, res) => {
   try {
     const company = await getRequestCompany(req);
-    const tasks = await Task.find({ company });
+    let query = { company };
+
+    if (req.query.assignedTo) {
+      const mongoose = require("mongoose");
+      if (mongoose.Types.ObjectId.isValid(req.query.assignedTo)) {
+        const user = await User.findById(req.query.assignedTo).select("name");
+        if (user) {
+          query.worker_name = user.name;
+        } else {
+          return res.json([]);
+        }
+      } else {
+        query.worker_name = req.query.assignedTo;
+      }
+    }
+
+    const tasks = await Task.find(query).sort({ createdAt: -1 });
     res.json(tasks);
   } catch (err) {
-    res.status(500).send(err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -1537,7 +1674,7 @@ app.post('/tasks-create', verifyToken, allowRoles("admin", "manager", "ceo"), ta
       return res.status(400).send("Invalid company");
     }
 
-    const image_path = req.file ? req.file.path.replace(/\\/g, '/') : null; // normalize path
+    const image_path = req.file ? await uploadToCloudinary(req.file.path, company) : null;
 
     // Auto-assign an available foil matching foil_type/size and weight >= required_kg (if foil_type/size are present)
     // This is required so that worker barcode scans can be validated.
@@ -1621,7 +1758,7 @@ app.put('/tasks/:id', verifyToken, allowRoles('admin', 'ceo'), multer({ storage:
     }
 
     if (req.file) {
-      task.image_path = req.file.path.replace(/\\/g, '/');
+      task.image_path = await uploadToCloudinary(req.file.path, task.company || company);
     }
 
     task.status = task.status || 'pending';
@@ -1726,7 +1863,7 @@ app.post('/tasks/:id/start', verifyToken, allowRoles('admin', 'manager', 'ceo', 
       });
     }
 
-    if (req.file) task.foil_start_image_path = req.file.path.replace(/\\/g, '/');
+    if (req.file) task.foil_start_image_path = await uploadToCloudinary(req.file.path, task.company || company);
     task.foilUsage = usage;
     task.foil_qrPayload = usage[0]?.foilQrPayload || '';
     task.status = 'in-progress';
@@ -1913,7 +2050,8 @@ app.post('/tasks/:id/consume', verifyToken, allowRoles('admin', 'manager', 'ceo'
     task.waste_kg = Number(waste_kg || 0);
     task.remaining_kg = Number(remaining_kg || 0);
     task.status = 'completed';
-    if (req.file) task.waste_image_path = req.file.path.replace(/\\/g, '/');
+    task.completedAt = new Date();
+    if (req.file) task.waste_image_path = await uploadToCloudinary(req.file.path, task.company || company);
     await task.save();
 
     if (auditEvents.length) await AuditLog.insertMany(auditEvents);
@@ -1967,8 +2105,9 @@ app.post('/tasks/:id/consume-legacy', verifyToken, allowRoles('admin', 'manager'
     task.waste_kg = Number(waste_kg);
     task.remaining_kg = Number(remaining_kg);
     task.status = 'completed';
+    task.completedAt = new Date();
     if (req.file) {
-      task.waste_image_path = req.file.path.replace(/\\/g, '/');
+      task.waste_image_path = await uploadToCloudinary(req.file.path, task.company || company);
     }
 
     await task.save();
@@ -2048,14 +2187,30 @@ function calcHours(checkIn, checkOut) {
   return Math.round((diff / 3600) * 100) / 100;
 }
 
-// Helper: calculate earnings based on hours, rate, and type
-function calcEarnings(hours, rate, type) {
+// Helper: calculate earnings based on hours, rate, type, date, OT hours, and OT rate
+function calcEarnings(hours, rate, type, dateStr, otHours = 0, otRate = 0) {
   if (!rate || rate <= 0) return 0;
-  if (type === "hourly") return Math.round(hours * rate * 100) / 100;
-  // daily: full day rate if >= 4 hrs, half if < 4 hrs
-  if (hours >= 4) return rate;
-  if (hours > 0) return Math.round(rate / 2 * 100) / 100;
-  return 0;
+  
+  let baseEarnings = 0;
+  if (type === "hourly") {
+    baseEarnings = hours * rate;
+  } else if (type === "monthly") {
+    const dateObj = dateStr ? new Date(dateStr) : new Date();
+    const year = dateObj.getFullYear();
+    const month = dateObj.getMonth() + 1; // 1-indexed
+    const totalDaysInMonth = new Date(year, month, 0).getDate();
+    const perDayRate = rate / totalDaysInMonth;
+    
+    if (hours >= 4) baseEarnings = perDayRate;
+    else if (hours > 0) baseEarnings = perDayRate / 2;
+  } else {
+    // daily
+    if (hours >= 4) baseEarnings = rate;
+    else if (hours > 0) baseEarnings = rate / 2;
+  }
+  
+  const otPay = otHours * otRate;
+  return Math.round((baseEarnings + otPay) * 100) / 100;
 }
 
 // Helper: get the role of a user by name + company
@@ -2157,8 +2312,9 @@ app.post("/attendance", verifyToken, async (req, res) => {
       record.checkOut = entryCheckOut;
       record.hoursWorked = calcHours(record.checkIn, record.checkOut);
       record.overtime = Math.max(0, record.hoursWorked - STANDARD_SHIFT_HOURS);
+      record.otRate = targetUser?.otRate || 0;
       record.totalHours = Math.round((record.hoursWorked + record.extraHours) * 100) / 100;
-      record.earnings = calcEarnings(record.hoursWorked, workerSalaryRate, workerSalaryType);
+      record.earnings = calcEarnings(record.hoursWorked, workerSalaryRate, workerSalaryType, record.date, record.overtime, record.otRate);
       
       record.markedBy = requester?.name || "System";
       record.markedByRole = requester?.role || req.user.role;
@@ -2227,14 +2383,15 @@ app.post("/attendance", verifyToken, async (req, res) => {
       markedByRole: requester?.role || req.user.role,
       workerRole: targetRole,
       salaryRate: workerSalaryRate,
-      salaryType: workerSalaryType
+      salaryType: workerSalaryType,
+      otRate: targetUser?.otRate || 0
     });
 
     if (record.checkIn && record.checkOut) {
       record.hoursWorked = calcHours(record.checkIn, record.checkOut);
       record.overtime = Math.max(0, record.hoursWorked - STANDARD_SHIFT_HOURS);
       record.totalHours = Math.round((record.hoursWorked + extra) * 100) / 100;
-      record.earnings = calcEarnings(record.hoursWorked, workerSalaryRate, workerSalaryType);
+      record.earnings = calcEarnings(record.hoursWorked, workerSalaryRate, workerSalaryType, record.date, record.overtime, record.otRate);
     } else {
       record.earnings = 0;
     }
@@ -2300,7 +2457,7 @@ app.put("/attendance/:id", verifyToken, async (req, res) => {
       record.hoursWorked = calcHours(record.checkIn, record.checkOut);
       record.overtime = Math.max(0, record.hoursWorked - STANDARD_SHIFT_HOURS);
       record.totalHours = Math.round((record.hoursWorked + (record.extraHours || 0)) * 100) / 100;
-      record.earnings = calcEarnings(record.hoursWorked, record.salaryRate, record.salaryType);
+      record.earnings = calcEarnings(record.hoursWorked, record.salaryRate, record.salaryType, record.date, record.overtime, record.otRate || 0);
     } else {
       record.earnings = 0;
     }
@@ -2316,12 +2473,19 @@ app.put("/attendance/:id", verifyToken, async (req, res) => {
 app.get("/attendance", verifyToken, async (req, res) => {
   try {
     const company = await getRequestCompany(req);
-    const { date, from, to, workerName, status } = req.query;
+    const { date, from, to, workerName, status, search, empNo } = req.query;
 
     let query = { company };
 
-    if (workerName) query.workerName = workerName;
-  if (req.query.empNo) query.empNo = req.query.empNo;
+    if (search) {
+      query.$or = [
+        { workerName: { $regex: new RegExp(search, "i") } },
+        { empNo: { $regex: new RegExp(search, "i") } }
+      ];
+    } else {
+      if (workerName) query.workerName = workerName;
+      if (empNo) query.empNo = empNo;
+    }
 
     if (date) {
       query.date = date;
@@ -2329,13 +2493,159 @@ app.get("/attendance", verifyToken, async (req, res) => {
       query.date = { $gte: from, $lte: to };
     }
 
+    if (status && status.toLowerCase() !== "all") {
+      if (!["paid leave", "paid-leave", "absent"].includes(status.toLowerCase())) {
+        query.status = { $regex: new RegExp(`^${status}$`, "i") };
+      }
+    }
+
     if (!["admin", "manager", "ceo"].includes(req.user.role)) {
       const self = await User.findById(req.user.id).select("name");
       query.workerName = self?.name;
     }
 
-    const records = await Attendance.find(query).sort({ date: -1, workerName: 1 });
-    res.json(records);
+    let records = await Attendance.find(query).sort({ date: -1, workerName: 1 });
+
+    // Now let's implement the Sunday & Holiday dynamic Paid Leave injection!
+    let usersQuery = { company };
+    if (query.workerName) {
+      usersQuery.name = query.workerName;
+    } else if (search) {
+      usersQuery.$or = [
+        { name: { $regex: new RegExp(search, "i") } },
+        { employeeNo: { $regex: new RegExp(search, "i") } }
+      ];
+    }
+    const users = await User.find(usersQuery).select("name employeeNo role salaryRate salaryType otRate");
+
+    let holidaysQuery = { company };
+    if (date) {
+      holidaysQuery.date = date;
+    } else if (from && to) {
+      holidaysQuery.date = { $gte: from, $lte: to };
+    }
+    const companyHolidays = await Holiday.find(holidaysQuery);
+    const holidayDates = new Set(companyHolidays.map(h => h.date));
+    const holidayReasons = companyHolidays.reduce((acc, h) => {
+      acc[h.date] = h.reason;
+      return acc;
+    }, {});
+
+    let datesToCheck = [];
+    if (date) {
+      datesToCheck.push(date);
+    } else if (from && to) {
+      let current = new Date(from);
+      const last = new Date(to);
+      while (current <= last) {
+        datesToCheck.push(current.toISOString().split("T")[0]);
+        current.setDate(current.getDate() + 1);
+      }
+    } else {
+      datesToCheck.push(new Date().toISOString().split("T")[0]);
+    }
+
+    let recordsMap = new Map();
+    records.forEach(r => {
+      recordsMap.set(`${r.workerName}_${r.date}`, r);
+    });
+
+    let finalRecords = [...records];
+
+    for (const d of datesToCheck) {
+      const dateObj = new Date(d);
+      const isSunday = dateObj.getDay() === 0;
+      const isHoliday = holidayDates.has(d);
+
+      if (isSunday || isHoliday) {
+        const reason = isSunday ? "Sunday Paid Leave" : `Holiday: ${holidayReasons[d]}`;
+        
+        for (const user of users) {
+          const key = `${user.name}_${d}`;
+          if (!recordsMap.has(key)) {
+            let dailyRate = user.salaryRate || 0;
+            if (user.salaryType === "monthly") {
+              const year = dateObj.getFullYear();
+              const month = dateObj.getMonth() + 1;
+              const totalDaysInMonth = new Date(year, month, 0).getDate();
+              dailyRate = user.salaryRate / totalDaysInMonth;
+            }
+            
+            const paidLeaveRecord = {
+              _id: `temp_${user._id}_${d}`,
+              empNo: user.employeeNo || "",
+              workerName: user.name,
+              company: company,
+              date: d,
+              checkIn: null,
+              checkOut: null,
+              status: "Paid Leave",
+              hoursWorked: 0,
+              overtime: 0,
+              totalHours: 0,
+              extraHours: 0,
+              remarks: reason,
+              workerRole: user.role,
+              salaryRate: user.salaryRate,
+              salaryType: user.salaryType,
+              otRate: user.otRate || 0,
+              earnings: user.salaryType === "hourly" ? 0 : Math.round(dailyRate * 100) / 100
+            };
+            
+            finalRecords.push(paidLeaveRecord);
+          }
+        }
+      } else {
+        // Weekdays dynamic absent generation
+        for (const user of users) {
+          const key = `${user.name}_${d}`;
+          if (!recordsMap.has(key)) {
+            const absentRecord = {
+              _id: `temp_${user._id}_${d}`,
+              empNo: user.employeeNo || "",
+              workerName: user.name,
+              company: company,
+              date: d,
+              checkIn: null,
+              checkOut: null,
+              status: "Absent",
+              hoursWorked: 0,
+              overtime: 0,
+              totalHours: 0,
+              extraHours: 0,
+              remarks: "No check-in record found",
+              workerRole: user.role,
+              salaryRate: user.salaryRate,
+              salaryType: user.salaryType,
+              otRate: user.otRate || 0,
+              earnings: 0
+            };
+            finalRecords.push(absentRecord);
+          }
+        }
+      }
+    }
+
+    if (status && status.toLowerCase() !== "all") {
+      const sLower = status.toLowerCase();
+      finalRecords = finalRecords.filter(r => {
+        const rStatus = (r.status || "").toLowerCase();
+        if (sLower === "paid leave" || sLower === "paid-leave") {
+          return rStatus === "paid leave";
+        }
+        if (sLower === "present") {
+          return ["present", "early", "on time", "late", "on-time"].includes(rStatus);
+        }
+        return rStatus === sLower;
+      });
+    }
+
+    finalRecords.sort((a, b) => {
+      if (b.date !== a.date) return b.date.localeCompare(a.date);
+      return a.workerName.localeCompare(b.workerName);
+    });
+
+    res.json(finalRecords);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

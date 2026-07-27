@@ -39,8 +39,7 @@ export const MENU_ITEMS = [
   { key: "settings", label: "Settings", icon: "⚙️", path: "/settings", section: "main" },
   { key: "userManagement", label: "Users", icon: "👥", path: "/user-management", section: "admin" },
   { key: "auditLogs", label: "Audit Logs", icon: "🔍", path: "/audit-logs", section: "admin" },
-  { key: "salaryManagement", label: "Salary", icon: "💰", path: "/salary", section: "admin" },
-  { key: "profile", label: "Profile", icon: "👤", path: "/profile", section: "main" },
+  { key: "salaryManagement", label: "Salary", icon: "💰", path: "/salary", section: "admin" }
 ];
 
 export const ROLE_DISPLAY = {
