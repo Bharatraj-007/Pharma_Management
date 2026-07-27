@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Smart Pharma System — Worker Dashboard for pharmaceutical manufacturing and engraving tasks." />
+  <title>Worker Dashboard</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body { font-family: Arial; margin: 0; padding: 20px; }
+    .task { border: 1px solid #ccc; padding: 15px; margin-bottom: 15px; border-radius: 10px; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    function WorkerDashboard() {
+      const [tasks, setTasks] = useState([]);
+
+      useEffect(() => {
+        fetch("http://localhost:5000/tasks")
+          .then(res => res.json())
+          .then(data => setTasks(data))
+          .catch(err => console.error(err));
+      }, []);
+
+      return React.createElement('div', { style: { padding: '20px' } },
+        React.createElement('h1', null, 'Worker Dashboard'),
+        tasks.map((task, index) => React.createElement('div', {
+          key: index,
+          style: { border: '1px solid #ccc', padding: '15px', marginBottom: '15px', borderRadius: '10px' }
+        }, [
+          React.createElement('h3', null, 'Worker: ' + task.worker_name),
+          React.createElement('p', null, 'Foil: ' + task.foil_barcode),
+          React.createElement('p', null, 'Cylinder: ' + task.cylinder_barcode),
+          React.createElement('p', null, 'Company: ' + task.pharma_company),
+          React.createElement('p', null, 'Product: ' + task.product_name),
+          React.createElement('p', null, 'Colors: ' + task.colors),
+          React.createElement('h4', null, 'Design Preview:'),
+          React.createElement('iframe', {
+            src: `http://localhost:5000/${task.sample_image}`,
+            width: '100%',
+            height: '400px',
+            title: 'PDF'
+          })
+        ]))
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(React.createElement(WorkerDashboard));
+  </script>
+</body>
+</html>
