@@ -120,8 +120,8 @@ function WorkerDashboard() {
   };
 
   const startTask = async (task) => {
+    const taskId = task._id;
     try {
-      const taskId = task._id;
       const fileInput = document.getElementById(`start-foil-image-${taskId}`);
       const barcodeInput = document.getElementById(`start-foil-qr-${taskId}`);
 
@@ -185,8 +185,8 @@ function WorkerDashboard() {
   };
 
   const completeTask = async (task) => {
+    const taskId = task._id;
     try {
-      const taskId = task._id;
       clearTaskAlert(taskId);
       const fileInput = document.getElementById(`waste-image-${taskId}`);
       const usedKgEl = document.getElementById(`used-kg-${taskId}`);

@@ -11,7 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { Platform } from 'react-native';
 
-const LAN_API_BASE_URL = 'http://10.31.112.59:5001'; // Wi-Fi IP for Expo Go on phone
+const LAN_API_BASE_URL = 'http://10.241.15.59:5001'; // Wi-Fi IP for Expo Go on phone
 const WEB_API_BASE_URL = 'http://localhost:5001';
 
 const API_BASE_URL = Platform.OS === 'web' ? WEB_API_BASE_URL : LAN_API_BASE_URL;

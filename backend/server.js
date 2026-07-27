@@ -92,12 +92,7 @@ const allowedOrigins = [
 ];
 
 app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-    return callback(new Error(`CORS origin not allowed: ${origin}`));
-  },
+  origin: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true
@@ -1066,6 +1061,96 @@ app.post("/reject", verifyToken, allowRoles("admin", "ceo"), async (req, res) =>
   const { id } = req.body;
   await UserRequest.findByIdAndUpdate(id, { status: "rejected" });
   res.send("Rejected");
+});
+
+// GET dashboard summary
+app.get("/api/dashboard/summary", verifyToken, async (req, res) => {
+  try {
+    const company = await getRequestCompany(req);
+
+    // Fetch concurrent statistics
+    const [staffCount, tasks, foilsCount, cylindersCount, requests, leaveRequests] = await Promise.all([
+      User.countDocuments({ company }),
+      Task.find({ company }),
+      Foil.countDocuments({ company }),
+      Cylinder.countDocuments({ company }),
+      UserRequest.find({ company, status: "pending", otpVerified: true }),
+      LeaveRequest.find({ company, status: "Pending" })
+    ]);
+
+    const totalTasksCount = tasks.length;
+    const completedTasksCount = tasks.filter(t => t.status === "completed").length;
+    const pendingTasksCount = tasks.filter(t => t.status !== "completed").length;
+
+    const taskStatusCounts = {
+      pending: tasks.filter(t => t.status === "pending" || t.status === "assigned").length,
+      inProgress: tasks.filter(t => t.status === "in-progress").length,
+      completed: completedTasksCount
+    };
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const todayTasksCount = tasks.filter(t => {
+      const d = new Date(t.createdAt || t.updatedAt || Date.now()).toISOString().split('T')[0];
+      return d === todayStr;
+    }).length;
+
+    // Get current user details for attendance and notifications
+    const currentUser = await User.findById(req.user.id);
+    const currentUserName = currentUser?.name || "Admin";
+
+    // Dynamic Attendance check (need Attendance model)
+    const Attendance = require("./models/Attendance");
+    const todayAtt = await Attendance.findOne({ company, workerName: currentUserName, date: todayStr });
+    const attendanceStatus = todayAtt ? todayAtt.status.toLowerCase().replace('-', '_') : "not_marked";
+
+    // Notifications
+    const notifications = [];
+    if (["admin", "manager", "ceo"].includes(req.user.role)) {
+      if (taskStatusCounts.pending > 0) {
+        notifications.push({
+          type: "task",
+          message: `You have ${taskStatusCounts.pending} pending task${taskStatusCounts.pending !== 1 ? 's' : ''} to start.`
+        });
+      }
+      if (leaveRequests.length > 0) {
+        notifications.push({
+          type: "leave",
+          message: `Review team leave requests and respond before your next shift.`
+        });
+      }
+    } else {
+      // For worker role, only show their own pending tasks
+      const workerPendingCount = tasks.filter(t => t.worker_name === currentUserName && (t.status === "pending" || t.status === "assigned")).length;
+      if (workerPendingCount > 0) {
+        notifications.push({
+          type: "task",
+          message: `You have ${workerPendingCount} pending task${workerPendingCount !== 1 ? 's' : ''} to start.`
+        });
+      }
+    }
+
+    res.json({
+      companyName: COMPANY_NAMES[company] || "Bharath Enterprises",
+      totalUsers: staffCount,
+      totalTasks: {
+        total: totalTasksCount,
+        done: completedTasksCount,
+        pending: pendingTasksCount
+      },
+      inventoryItems: {
+        total: foilsCount + cylindersCount,
+        foils: foilsCount,
+        cylinders: cylindersCount
+      },
+      pendingRequests: requests.length,
+      todayTasks: todayTasksCount,
+      taskStatus: taskStatusCounts,
+      attendanceStatus,
+      notifications
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // GET all tasks

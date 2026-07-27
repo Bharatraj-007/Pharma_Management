@@ -7,7 +7,7 @@ import Navbar from "./components/Navbar";
 import AccessDenied from "./components/AccessDenied";
 
 // Lazy loaded page components
-const DashboardPage = lazy(() => import("./pages/DashboardPage"));
+const DashboardRouter = lazy(() => import("./pages/DashboardRouter"));
 const Tasks = lazy(() => import("./pages/Tasks"));
 const Stock = lazy(() => import("./pages/Inventory"));
 const ReportsPage = lazy(() => import("./pages/ReportsPage"));
@@ -48,7 +48,7 @@ function App() {
           <Route path="/signout" element={<Signout />} />
 
           {/* Protected routes */}
-          <Route path="/dashboard" element={<PrivateRoute><Layout><DashboardPage /></Layout></PrivateRoute>} />
+          <Route path="/dashboard" element={<PrivateRoute><Layout><DashboardRouter /></Layout></PrivateRoute>} />
           <Route path="/tasks" element={<PrivateRoute><ProtectedRoute permission="tasks"><Layout><Tasks /></Layout></ProtectedRoute></PrivateRoute>} />
           <Route path="/stock" element={<PrivateRoute><ProtectedRoute permission="stock"><Layout><Stock /></Layout></ProtectedRoute></PrivateRoute>} />
           <Route path="/attendance" element={<PrivateRoute><ProtectedRoute permission="attendance"><Layout><Attendance /></Layout></ProtectedRoute></PrivateRoute>} />
