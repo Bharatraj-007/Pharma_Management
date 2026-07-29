@@ -1,38 +1,41 @@
 // Mirrors frontend/src/permissions.js exactly — no web-only APIs, safe for RN.
 
 export const ROLES = {
-  admin: 'Admin',
-  ceo: 'CEO',
+  super_admin: 'Super Admin',
+  admin:   'Admin',
+  ceo:     'CEO',
   manager: 'Manager',
-  worker: 'Worker',
+  worker:  'Worker',
 };
 
 export const PERMISSIONS = {
-  dashboard:        ['admin', 'ceo', 'manager', 'worker'],
-  tasks:            ['admin', 'ceo', 'manager', 'worker'],
-  stock:            ['admin', 'ceo', 'manager'],
-  attendance:       ['admin', 'ceo', 'manager', 'worker'],
-  leaveManagement:  ['admin', 'ceo', 'manager', 'worker'],
-  reports:          ['admin', 'ceo', 'manager', 'worker'],
-  auditLogs:        ['admin', 'ceo'],
-  userManagement:   ['admin', 'ceo'],
-  salaryManagement: ['admin', 'ceo'],
-  settings:         ['admin', 'ceo', 'manager', 'worker'],
-  chat:             ['admin', 'ceo', 'manager', 'worker'],
+  dashboard:        ['super_admin', 'admin', 'ceo', 'manager', 'worker'],
+  tasks:            ['super_admin', 'admin', 'ceo', 'manager', 'worker'],
+  stock:            ['super_admin', 'admin', 'ceo', 'manager'],
+  dispatch:         ['super_admin', 'admin', 'ceo', 'manager'],
+  attendance:       ['super_admin', 'admin', 'ceo', 'manager', 'worker'],
+  leaveManagement:  ['super_admin', 'admin', 'ceo', 'manager', 'worker'],
+  reports:          ['super_admin', 'admin', 'ceo', 'manager', 'worker'],
+  auditLogs:        ['super_admin', 'admin', 'ceo'],
+  userManagement:   ['super_admin', 'admin', 'ceo'],
+  salaryManagement: ['super_admin', 'admin', 'ceo'],
+  settings:         ['super_admin', 'admin', 'ceo', 'manager', 'worker'],
+  chat:             ['super_admin', 'admin', 'ceo', 'manager', 'worker'],
 };
 
 export const ACTION_PERMISSIONS = {
-  assignTasks:  ['admin', 'ceo', 'manager'],
-  approveLeave: ['admin', 'ceo', 'manager'],
-  editSalary:   ['admin', 'ceo'],
-  manageUsers:  ['admin', 'ceo'],
-  viewAuditLogs:['admin', 'ceo'],
+  assignTasks:  ['super_admin', 'admin', 'ceo', 'manager'],
+  approveLeave: ['super_admin', 'admin', 'ceo', 'manager'],
+  editSalary:   ['super_admin', 'admin', 'ceo'],
+  manageUsers:  ['super_admin', 'admin', 'ceo'],
+  viewAuditLogs:['super_admin', 'admin', 'ceo'],
 };
 
 export const MENU_ITEMS = [
   { key: 'dashboard',        label: 'Dashboard',   icon: '📊', screen: 'Dashboard',       section: 'main' },
   { key: 'tasks',            label: 'Tasks',        icon: '📋', screen: 'Tasks',           section: 'main' },
   { key: 'stock',            label: 'Inventory',    icon: '📦', screen: 'Inventory',       section: 'main' },
+  { key: 'dispatch',         label: 'Dispatch',     icon: '🚚', screen: 'Dispatch',        section: 'main' },
   { key: 'attendance',       label: 'Attendance',   icon: '⏱️', screen: 'Attendance',      section: 'main' },
   { key: 'leaveManagement',  label: 'Leave',        icon: '🗓️', screen: 'Leave',           section: 'main' },
   { key: 'reports',          label: 'Reports',      icon: '📈', screen: 'Reports',         section: 'main' },

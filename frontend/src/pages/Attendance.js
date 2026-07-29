@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import API_BASE_URL from "../config";
 import { usePermissions } from "../hooks/usePermissions";
 
@@ -39,6 +39,143 @@ function Attendance() {
     notes: "",
     empNo: "",
   });
+
+  // Salary & Advance Request States
+  const [salaryDetails, setSalaryDetails] = useState(null);
+  const [salaryMonth, setSalaryMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+  const [advanceAmount, setAdvanceAmount] = useState("");
+  const [qrCodeFile, setQrCodeFile] = useState(null);
+  const [showAdvanceModal, setShowAdvanceModal] = useState(false);
+  const [pendingAdvances, setPendingAdvances] = useState([]);
+  const [advanceUploading, setAdvanceUploading] = useState(false);
+
+  const fetchSalaryDetails = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const myUserId = localStorage.getItem("userId");
+      let targetUserId = myUserId;
+
+      if (userRole !== "worker") {
+        if (filterWorker === "All" || !filterWorker) {
+          setSalaryDetails(null);
+          return;
+        }
+        const targetWorker = workers.find(w => w.name === filterWorker);
+        if (!targetWorker) {
+          setSalaryDetails(null);
+          return;
+        }
+        targetUserId = targetWorker._id;
+      }
+
+      const res = await fetch(`${API_BASE_URL}/api/salary/${targetUserId}?month=${salaryMonth}`, {
+        headers: { Authorization: token }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSalaryDetails(data);
+      } else {
+        setSalaryDetails(null);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchPendingAdvances = async () => {
+    if (userRole === "worker") return;
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE_URL}/api/advance/report?month=${salaryMonth}`, {
+        headers: { Authorization: token }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPendingAdvances(data.filter(r => r.status === "pending"));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    if (localStorage.getItem("token")) {
+      fetchSalaryDetails();
+      fetchPendingAdvances();
+    }
+  }, [salaryMonth, filterWorker, workers, attendance]);
+
+  const handleRequestAdvance = async (e) => {
+    e.preventDefault();
+    if (!advanceAmount || isNaN(advanceAmount) || Number(advanceAmount) <= 0) {
+      alert("Please enter a valid amount.");
+      return;
+    }
+
+    setAdvanceUploading(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const token = localStorage.getItem("token");
+      const formData = new FormData();
+      formData.append("amountRequested", advanceAmount);
+      formData.append("deductedFromMonth", salaryMonth);
+      if (qrCodeFile) {
+        formData.append("qrCode", qrCodeFile);
+      }
+
+      const res = await fetch(`${API_BASE_URL}/api/advance/request`, {
+        method: "POST",
+        headers: { Authorization: token },
+        body: formData
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to submit request.");
+
+      setSuccess("✅ Advance request submitted successfully!");
+      setAdvanceAmount("");
+      setQrCodeFile(null);
+      setShowAdvanceModal(false);
+      fetchSalaryDetails();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setAdvanceUploading(false);
+    }
+  };
+
+  const handleApproveAdvance = async (requestId, isApproved, paymentMethod = "") => {
+    if (isApproved && !paymentMethod) {
+      alert("Please select a payment method.");
+      return;
+    }
+    setError("");
+    setSuccess("");
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE_URL}/api/advance/${requestId}/approve`, {
+        method: "PUT",
+        headers: {
+          Authorization: token,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          status: isApproved ? "approved" : "rejected",
+          paymentMethod
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to process request.");
+
+      setSuccess(`✅ Advance request ${isApproved ? "approved" : "rejected"}!`);
+      fetchPendingAdvances();
+      fetchSalaryDetails();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
 
   // 1. Real-time running clock
   useEffect(() => {
@@ -239,22 +376,24 @@ function Attendance() {
   };
 
   // Calculate statistics for today's records
-  const stats = attendance.reduce(
-    (acc, record) => {
-      const statusLower = (record.status || "").toLowerCase();
-      if (["present", "early", "on time", "late", "on-time"].includes(statusLower)) {
-        acc.present += 1;
-      } else if (statusLower === "absent") {
-        acc.absent += 1;
-      } else if (statusLower === "half-day" || statusLower === "half day") {
-        acc.halfDay += 1;
-      }
-      acc.totalHours += record.totalHours || record.hoursWorked || 0;
-      acc.totalPay += record.earnings || 0;
-      return acc;
-    },
-    { present: 0, absent: 0, halfDay: 0, totalHours: 0, totalPay: 0 }
-  );
+  const stats = useMemo(() => {
+    return attendance.reduce(
+      (acc, record) => {
+        const statusLower = (record.status || "").toLowerCase();
+        if (["present", "early", "on time", "late", "on-time"].includes(statusLower)) {
+          acc.present += 1;
+        } else if (statusLower === "absent") {
+          acc.absent += 1;
+        } else if (statusLower === "half-day" || statusLower === "half day") {
+          acc.halfDay += 1;
+        }
+        acc.totalHours += record.totalHours || record.hoursWorked || 0;
+        acc.totalPay += record.earnings || 0;
+        return acc;
+      },
+      { present: 0, absent: 0, halfDay: 0, totalHours: 0, totalPay: 0 }
+    );
+  }, [attendance]);
 
   return (
     <div>
@@ -289,6 +428,195 @@ function Attendance() {
           <span className="text-xs uppercase font-bold tracking-wider" style={{ color: "rgba(255,255,255,0.8)" }}>Total Pay</span>
         </div>
       </div>
+
+      {/* Salary Summary & Net Pay Section */}
+      {salaryDetails && (
+        <div className="sp-card mb-5 animate-fade" style={{ background: "var(--color-surface-alt)", padding: "20px", borderRadius: "8px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
+            <h3 style={{ margin: 0 }}>📊 Salary Summary & Net Pay</h3>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <label className="sp-label" style={{ margin: 0, fontWeight: "bold" }}>Month:</label>
+              <input
+                type="month"
+                className="sp-input"
+                style={{ width: "auto", padding: "4px 8px", marginBottom: 0 }}
+                value={salaryMonth}
+                onChange={(e) => setSalaryMonth(e.target.value)}
+              />
+              {userRole === "worker" && (
+                <button
+                  type="button"
+                  className="sp-btn sp-btn-primary sp-btn-sm"
+                  onClick={() => setShowAdvanceModal(true)}
+                >
+                  💸 Request Advance
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="sp-card-grid mb-4" style={{ gridTemplateColumns: "repeat(4, 1fr)", gap: "16px" }}>
+            <div className="sp-card" style={{ background: "#fff", padding: "12px", borderRadius: "6px", textAlign: "center" }}>
+              <h4 style={{ margin: "0 0 4px 0", color: "var(--color-primary)" }}>₹{salaryDetails.summary.baseSalaryEarned}</h4>
+              <span className="text-muted text-xs uppercase font-bold">Base Pay Earned</span>
+            </div>
+            <div className="sp-card" style={{ background: "#fff", padding: "12px", borderRadius: "6px", textAlign: "center" }}>
+              <h4 style={{ margin: "0 0 4px 0", color: "var(--color-success)" }}>+ ₹{salaryDetails.summary.otPayEarned}</h4>
+              <span className="text-muted text-xs uppercase font-bold">OT Pay ({salaryDetails.summary.otHoursTotal} hrs)</span>
+            </div>
+            <div className="sp-card" style={{ background: "#fff", padding: "12px", borderRadius: "6px", textAlign: "center" }}>
+              <h4 style={{ margin: "0 0 4px 0", color: "#10b981" }}>+ ₹{salaryDetails.summary.sundayHolidayODBonus}</h4>
+              <span className="text-muted text-xs uppercase font-bold">Sunday/Holiday OD Bonus</span>
+            </div>
+            <div className="sp-card" style={{ background: "#fff", padding: "12px", borderRadius: "6px", textAlign: "center" }}>
+              <h4 style={{ margin: "0 0 4px 0", color: "var(--color-danger)" }}>- ₹{salaryDetails.summary.totalAdvanceDeducted}</h4>
+              <span className="text-muted text-xs uppercase font-bold">Advances Deducted</span>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: "20px", flexWrap: "wrap" }}>
+            <div className="sp-card" style={{ flex: 1, minWidth: "280px", background: "#fff", padding: "16px", borderRadius: "6px" }}>
+              <h4 style={{ margin: "0 0 12px 0", borderBottom: "1px solid var(--color-border)", paddingBottom: "6px" }}>Deduction Breakdown</h4>
+              <ul style={{ paddingLeft: "16px", margin: 0, fontSize: "14px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                <li><strong>Days Present:</strong> {salaryDetails.summary.daysPresent}</li>
+                <li><strong>Days Paid Leave:</strong> {salaryDetails.summary.daysPaidLeave}</li>
+                <li><strong>Days Absent:</strong> {salaryDetails.summary.daysAbsent} {salaryDetails.summary.absentDeduction > 0 && <span style={{ color: "var(--color-danger)" }}>(₹{salaryDetails.summary.absentDeduction} cut)</span>}</li>
+                <li><strong>Days Half Day:</strong> {salaryDetails.summary.daysHalfDay}</li>
+              </ul>
+            </div>
+
+            <div className="sp-card" style={{ flex: 1, minWidth: "280px", background: "var(--color-primary)", color: "#fff", padding: "20px", borderRadius: "6px", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center" }}>
+              <span style={{ fontSize: "12px", textTransform: "uppercase", fontWeight: "bold", opacity: 0.8, letterSpacing: "1px" }}>Final Net Salary</span>
+              <h2 style={{ fontSize: "2.8rem", margin: "8px 0", fontWeight: "900" }}>₹{salaryDetails.summary.finalNetSalary}</h2>
+              <span style={{ fontSize: "11px", opacity: 0.7 }}>Gross Salary: ₹{salaryDetails.summary.grossSalary}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Pending Advance Requests Section */}
+      {userRole !== "worker" && pendingAdvances.length > 0 && (
+        <div className="sp-card mb-5 animate-fade" style={{ border: "1px solid var(--color-warning)", padding: "16px", borderRadius: "8px" }}>
+          <h3 style={{ color: "var(--color-warning)", marginTop: 0, marginBottom: "12px" }}>💸 Pending Advance Requests ({pendingAdvances.length})</h3>
+          <div className="sp-card-grid" style={{ gridTemplateColumns: "1fr", gap: "12px" }}>
+            {pendingAdvances.map((adv) => (
+              <div
+                key={adv._id}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  background: "#fff",
+                  padding: "12px 16px",
+                  borderRadius: "6px",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+                  flexWrap: "wrap",
+                  gap: "10px"
+                }}
+              >
+                <div>
+                  <h4 style={{ margin: "0 0 4px 0" }}>{adv.workerName} (Emp No: {adv.employeeNo})</h4>
+                  <p style={{ margin: 0, fontSize: "14px" }}>
+                    Requested: <strong>₹{adv.amountRequested}</strong> for month: {adv.deductedFromMonth}
+                  </p>
+                  {adv.qrCodeImageUrl && (
+                    <a
+                      href={adv.qrCodeImageUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ fontSize: "12px", color: "var(--color-primary)", textDecoration: "underline", display: "inline-block", marginTop: "4px" }}
+                    >
+                      🖼️ View Uploaded QR Code
+                    </a>
+                  )}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <button
+                    type="button"
+                    className="sp-btn sp-btn-success sp-btn-sm"
+                    onClick={() => {
+                      const method = window.confirm("Approve via ONLINE payment? (Cancel for CASH)") ? "online" : "cash";
+                      handleApproveAdvance(adv._id, true, method);
+                    }}
+                  >
+                    Approve
+                  </button>
+                  <button
+                    type="button"
+                    className="sp-btn sp-btn-danger sp-btn-sm"
+                    onClick={() => handleApproveAdvance(adv._id, false)}
+                  >
+                    Reject
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Advance Request Modal */}
+      {showAdvanceModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.5)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 1000
+          }}
+        >
+          <div className="sp-card animate-fade" style={{ width: "400px", padding: "20px", background: "#fff", borderRadius: "8px" }}>
+            <h3 style={{ marginTop: 0 }}>💸 Request Salary Advance</h3>
+            <form onSubmit={handleRequestAdvance}>
+              <div className="sp-form-group">
+                <label className="sp-label">Amount (₹) *</label>
+                <input
+                  type="number"
+                  required
+                  className="sp-input"
+                  placeholder="e.g. 5000"
+                  value={advanceAmount}
+                  onChange={(e) => setAdvanceAmount(e.target.value)}
+                />
+              </div>
+
+              <div className="sp-form-group">
+                <label className="sp-label">Upload QR Code (GPay/PhonePe/Paytm - Optional)</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="sp-input"
+                  onChange={(e) => setQrCodeFile(e.target.files[0])}
+                />
+              </div>
+
+              <div className="flex gap-2 justify-end mt-4">
+                <button
+                  type="button"
+                  className="sp-btn sp-btn-secondary"
+                  onClick={() => setShowAdvanceModal(false)}
+                  disabled={advanceUploading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="sp-btn sp-btn-primary"
+                  disabled={advanceUploading}
+                >
+                  {advanceUploading ? "Submitting..." : "Submit Request"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <div className="sp-card-grid mb-5" style={{ gridTemplateColumns: "1fr" }}>
         {/* Form Container */}

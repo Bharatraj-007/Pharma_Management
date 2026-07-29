@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import API_BASE_URL from "../config";
 
 function Tasks() {
@@ -274,9 +274,12 @@ function Tasks() {
     }
   };
 
-  const totalAssigned = tasks.length;
-  const totalCompleted = tasks.filter(t => t.status === "completed").length;
-  const totalPending = tasks.filter(t => t.status !== "completed").length;
+  const { totalAssigned, totalCompleted, totalPending } = useMemo(() => {
+    const total = tasks.length;
+    const completed = tasks.filter(t => t.status === "completed").length;
+    const pending = total - completed;
+    return { totalAssigned: total, totalCompleted: completed, totalPending: pending };
+  }, [tasks]);
 
   return (
     <div>

@@ -8,6 +8,11 @@ function ReportsPage() {
   const [foilUsage, setFoilUsage] = useState([]);
   const [foilLoading, setFoilLoading] = useState(false);
 
+  // Advance reports states
+  const [reportMonth, setReportMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [advanceLogs, setAdvanceLogs] = useState([]);
+  const [advanceLoading, setAdvanceLoading] = useState(false);
+
   const summary = {
     completed: role === "worker" ? 12 : 84,
     hours: role === "worker" ? 42 : 312,
@@ -26,6 +31,52 @@ function ReportsPage() {
       .catch(() => setFoilUsage([]))
       .finally(() => setFoilLoading(false));
   }, []);
+
+  const fetchAdvanceReport = async () => {
+    if (role !== "admin" && role !== "ceo") return;
+    setAdvanceLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE_URL}/api/advance/report?month=${reportMonth}`, {
+        headers: { Authorization: token }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAdvanceLogs(data);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setAdvanceLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAdvanceReport();
+  }, [reportMonth, role]);
+
+  const handleDownload = async (format) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE_URL}/api/advance/report/export?month=${reportMonth}&format=${format}`, {
+        headers: { Authorization: token }
+      });
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `Advance_Report_${reportMonth}.${format === "pdf" ? "pdf" : "xlsx"}`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      } else {
+        alert("Failed to export report");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const totalFoilUsed = foilUsage.reduce((sum, row) => sum + Number(row.totalFoilUsed || 0), 0);
 
@@ -62,6 +113,83 @@ function ReportsPage() {
         </div>
         <div className="text-muted">Data updates based on your role scope. Worker sees personal data; supervisors and admins see broader team/company trends.</div>
       </div>
+
+      {/* Monthly Advance Report section (Admin/CEO only) */}
+      {(role === "admin" || role === "ceo") && (
+        <div className="sp-card mb-5">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--color-border)", paddingBottom: "12px", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
+            <h3 style={{ margin: 0 }}>💸 Monthly Salary Advance Report</h3>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <input
+                type="month"
+                className="sp-input"
+                style={{ width: "auto", marginBottom: 0, padding: "6px 12px" }}
+                value={reportMonth}
+                onChange={(e) => setReportMonth(e.target.value)}
+              />
+              <button
+                className="sp-btn sp-btn-secondary sp-btn-sm"
+                onClick={() => handleDownload("excel")}
+                disabled={advanceLogs.filter(a => a.status === "approved").length === 0}
+              >
+                📥 Export Excel
+              </button>
+              <button
+                className="sp-btn sp-btn-secondary sp-btn-sm"
+                onClick={() => handleDownload("pdf")}
+                disabled={advanceLogs.filter(a => a.status === "approved").length === 0}
+              >
+                📄 Export PDF
+              </button>
+            </div>
+          </div>
+
+          {advanceLoading ? (
+            <p className="text-muted">Loading advance report...</p>
+          ) : advanceLogs.length === 0 ? (
+            <p className="text-muted">No salary advances requested for this month.</p>
+          ) : (
+            <div className="sp-table-wrap">
+              <table className="sp-table">
+                <thead>
+                  <tr>
+                    <th>Worker Name</th>
+                    <th>Employee No</th>
+                    <th>Amount Requested</th>
+                    <th>Payment Method</th>
+                    <th>Approved By</th>
+                    <th>Date / Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {advanceLogs.map((row) => (
+                    <tr key={row._id}>
+                      <td><strong>{row.workerName}</strong></td>
+                      <td>{row.employeeNo}</td>
+                      <td>₹{row.amountRequested}</td>
+                      <td>
+                        <span className={`sp-badge ${row.paymentMethod === "online" ? "sp-badge-accent" : row.paymentMethod === "cash" ? "sp-badge-primary" : ""}`}>
+                          {row.paymentMethod.toUpperCase()}
+                        </span>
+                      </td>
+                      <td>{row.approvedBy}</td>
+                      <td>
+                        <span style={{
+                          fontWeight: "bold",
+                          color: row.status === "approved" ? "var(--color-success)" : row.status === "rejected" ? "var(--color-danger)" : "var(--color-warning)"
+                        }}>
+                          {row.status.toUpperCase()}
+                        </span>
+                        {row.status === "approved" && <span style={{ fontSize: "11px", color: "var(--color-text-muted)", marginLeft: "8px" }}>({row.date})</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="sp-card mb-5">
         <div className="sp-card-header">

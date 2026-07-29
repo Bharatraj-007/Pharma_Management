@@ -10,6 +10,7 @@ import AccessDenied from "./components/AccessDenied";
 const DashboardRouter = lazy(() => import("./pages/DashboardRouter"));
 const Tasks = lazy(() => import("./pages/Tasks"));
 const Stock = lazy(() => import("./pages/Inventory"));
+const Dispatch = lazy(() => import("./pages/Dispatch"));
 const ReportsPage = lazy(() => import("./pages/ReportsPage"));
 const Attendance = lazy(() => import("./pages/Attendance"));
 const LeaveManagement = lazy(() => import("./pages/LeaveManagement"));
@@ -23,6 +24,7 @@ const VerifyOTP = lazy(() => import("./pages/VerifyOTP"));
 const Login = lazy(() => import("./pages/Login"));
 const Signout = lazy(() => import("./pages/Signout"));
 const Profile = lazy(() => import("./pages/Profile"));
+const NotificationsScreen = lazy(() => import("./pages/NotificationsScreen"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 function LoadingFallback() {
@@ -51,6 +53,7 @@ function App() {
           <Route path="/dashboard" element={<PrivateRoute><Layout><DashboardRouter /></Layout></PrivateRoute>} />
           <Route path="/tasks" element={<PrivateRoute><ProtectedRoute permission="tasks"><Layout><Tasks /></Layout></ProtectedRoute></PrivateRoute>} />
           <Route path="/stock" element={<PrivateRoute><ProtectedRoute permission="stock"><Layout><Stock /></Layout></ProtectedRoute></PrivateRoute>} />
+          <Route path="/dispatch" element={<PrivateRoute><ProtectedRoute permission="dispatch"><Layout><Dispatch /></Layout></ProtectedRoute></PrivateRoute>} />
           <Route path="/attendance" element={<PrivateRoute><ProtectedRoute permission="attendance"><Layout><Attendance /></Layout></ProtectedRoute></PrivateRoute>} />
           <Route path="/leave" element={<PrivateRoute><ProtectedRoute permission="leaveManagement"><Layout><LeaveManagement /></Layout></ProtectedRoute></PrivateRoute>} />
           <Route path="/reports" element={<PrivateRoute><ProtectedRoute permission="reports"><Layout><ReportsPage /></Layout></ProtectedRoute></PrivateRoute>} />
@@ -60,6 +63,7 @@ function App() {
           <Route path="/audit-logs" element={<PrivateRoute><ProtectedRoute permission="auditLogs"><Layout><AuditLogs /></Layout></ProtectedRoute></PrivateRoute>} />
           <Route path="/salary" element={<PrivateRoute><ProtectedRoute permission="salaryManagement"><Layout><SalaryManagement /></Layout></ProtectedRoute></PrivateRoute>} />
           <Route path="/profile" element={<PrivateRoute><ProtectedRoute permission="settings"><Layout><Profile /></Layout></ProtectedRoute></PrivateRoute>} />
+          <Route path="/notifications" element={<PrivateRoute><Layout><NotificationsScreen /></Layout></PrivateRoute>} />
           <Route path="/access-denied" element={<PrivateRoute><Layout><AccessDenied /></Layout></PrivateRoute>} />
 
           {/* 404 catch-all */}

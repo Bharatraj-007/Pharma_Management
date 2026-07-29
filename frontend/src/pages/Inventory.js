@@ -71,11 +71,19 @@ function Stock() {
   const [editCylinderData, setEditCylinderData] = useState(null);
   const [showEditCylinderModal, setShowEditCylinderModal] = useState(false);
 
+  const getTodayDateStr = () => new Date().toISOString().split('T')[0];
+  const getYesterdayDateStr = () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().split('T')[0];
+  };
+
   // ========== CYLINDER STATE (barcode-based UI retained) ==========
+  const [cylinderClientCompany, setCylinderClientCompany] = useState("");
   const [cylinderProduct, setCylinderProduct] = useState("");
   const [cylinderColors, setCylinderColors] = useState("");
   const [cylinderSize, setCylinderSize] = useState("");
-  const [cylinderManufacturer, setCylinderManufacturer] = useState("");
+  const [cylinderManufacturer, setCylinderManufacturer] = useState(company === "vel" ? "Vel Gravure" : "");
   const [cylinderDate, setCylinderDate] = useState("");
   const [cylinderBarcode, setCylinderBarcode] = useState("");
   const [showCylinderLabel, setShowCylinderLabel] = useState(false);
@@ -359,7 +367,7 @@ function Stock() {
   // ========== CYLINDER FUNCTION ==========
   const addCylinder = async () => {
     if (!cylinderProduct || !cylinderColors || !cylinderSize || !cylinderManufacturer || !cylinderDate) {
-      alert("❌ Please fill all cylinder fields");
+      alert("❌ Please fill all required cylinder fields");
       return;
     }
 
@@ -369,6 +377,7 @@ function Stock() {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({
+          client_company: cylinderClientCompany || (company === "vel" ? "Printing Client" : companyName),
           product_name: cylinderProduct,
           colors: Number(cylinderColors),
           size_inches: Number(cylinderSize),
@@ -386,6 +395,7 @@ function Stock() {
       setCylinderBarcode(data.barcode);
       setLastCylinderLabel(
         data.cylinder || {
+          client_company: cylinderClientCompany || "Printing Client",
           product_name: cylinderProduct,
           colors: Number(cylinderColors),
           size_inches: Number(cylinderSize),
@@ -400,10 +410,11 @@ function Stock() {
       setShowCylinderLabel(true);
       fetchStock();
 
+      setCylinderClientCompany("");
       setCylinderProduct("");
       setCylinderColors("");
       setCylinderSize("");
-      setCylinderManufacturer("");
+      setCylinderManufacturer(company === "vel" ? "Vel Gravure" : "");
       setCylinderDate("");
     } catch (err) {
       alert("Error: " + err.message);
@@ -869,6 +880,16 @@ function Stock() {
               {company !== "bharath" && <h3>Add New {inventoryConfig.cylinderLabel} Stock</h3>}
 
               <div className="sp-form-group">
+                <label className="sp-label">{company === "vel" ? "Printing / Client Company Name *" : "Client / Pharma Company Name"}</label>
+                <input
+                  placeholder={company === "vel" ? "e.g., Bharath Enterprises / Shree Ganaapathy" : "e.g., Sun Pharma"}
+                  value={cylinderClientCompany}
+                  onChange={(e) => setCylinderClientCompany(e.target.value)}
+                  className="sp-input"
+                />
+              </div>
+
+              <div className="sp-form-group">
                 <label className="sp-label">Product Name *</label>
                 <input
                   placeholder="e.g., Aspirin Blister"
@@ -884,18 +905,18 @@ function Stock() {
               </div>
 
               <div className="sp-form-group">
-                <label className="sp-label">Size (inches) *</label>
+                <label className="sp-label">Cylinder Size (inches) *</label>
                 <input placeholder="e.g., 10" type="number" value={cylinderSize} onChange={(e) => setCylinderSize(e.target.value)} className="sp-input" />
               </div>
 
               <div className="sp-form-group">
                 <label className="sp-label">Manufacturer *</label>
-                <input placeholder="e.g., Company XYZ" value={cylinderManufacturer} onChange={(e) => setCylinderManufacturer(e.target.value)} className="sp-input" />
+                <input placeholder="e.g., Vel Gravure" value={cylinderManufacturer} onChange={(e) => setCylinderManufacturer(e.target.value)} className="sp-input" />
               </div>
 
               <div className="sp-form-group">
                 <label className="sp-label">Manufacture Date *</label>
-                <input type="date" value={cylinderDate} onChange={(e) => setCylinderDate(e.target.value)} className="sp-input" />
+                <input type="date" value={cylinderDate} onKeyDown={(e) => e.preventDefault()} onChange={(e) => setCylinderDate(e.target.value)} className="sp-input" style={{ cursor: "pointer" }} />
               </div>
 
               <button onClick={addCylinder} className="sp-btn sp-btn-success sp-btn-lg sp-btn-block" disabled={cylinderLoading}>
@@ -909,11 +930,11 @@ function Stock() {
                       <h2 style={{ margin: "0", fontSize: "24px" }}>{inventoryConfig.cylinderLabel.toUpperCase()} LABEL</h2>
                     </div>
                     <div style={labelContentStyle}>
+                      <div className="sp-label-row"><span className="sp-label-key">Client Company:</span><span className="sp-label-value">{lastCylinderLabel.client_company || lastCylinderLabel.company || companyName}</span></div>
                       <div className="sp-label-row"><span className="sp-label-key">Product:</span><span className="sp-label-value">{lastCylinderLabel.product_name}</span></div>
                       <div className="sp-label-row"><span className="sp-label-key">Colors:</span><span className="sp-label-value">{lastCylinderLabel.colors}</span></div>
-                      <div className="sp-label-row"><span className="sp-label-key">Size:</span><span className="sp-label-value">{lastCylinderLabel.size_inches}</span></div>
+                      <div className="sp-label-row"><span className="sp-label-key">Cylinder Size:</span><span className="sp-label-value">{lastCylinderLabel.size_inches} IN</span></div>
                       <div className="sp-label-row"><span className="sp-label-key">Manufacturer:</span><span className="sp-label-value">{lastCylinderLabel.manufacturer}</span></div>
-                      <div className="sp-label-row"><span className="sp-label-key">Company:</span><span className="sp-label-value">{lastCylinderLabel.company || companyName}</span></div>
                       <div className="sp-label-row"><span className="sp-label-key">Manufacture Date:</span><span className="sp-label-value">{lastCylinderLabel.manufacture_date ? new Date(lastCylinderLabel.manufacture_date).toLocaleDateString() : "—"}</span></div>
                       <hr style={hrStyle} />
                       <div style={barcodeDisplayStyle}>
@@ -960,9 +981,10 @@ function Stock() {
                   <table className="sp-table">
                     <thead>
                       <tr>
-                        <th>Product</th>
+                        <th>Client Company</th>
+                        <th>Product Name</th>
                         <th>Colors</th>
-                        <th>Size</th>
+                        <th>Cylinder Size</th>
                         <th>Manufacturer</th>
                         <th>Barcode</th>
                         <th>Actions</th>
@@ -971,16 +993,17 @@ function Stock() {
                     <tbody>
                       {filteredCylinders.length === 0 ? (
                         <tr>
-                          <td className="empty-cell" colSpan="6">No cylinder stock found</td>
+                          <td className="empty-cell" colSpan="7">No cylinder stock found</td>
                         </tr>
                       ) : (
                         filteredCylinders.map((cylinder) => (
                           <tr key={cylinder._id || cylinder.barcode}>
+                            <td><strong>{cylinder.client_company || cylinder.company || "Printing Client"}</strong></td>
                             <td>{cylinder.product_name}</td>
                             <td>{cylinder.colors}</td>
-                            <td>{cylinder.size_inches}</td>
+                            <td>{cylinder.size_inches} IN</td>
                             <td>{cylinder.manufacturer}</td>
-                            <td>{cylinder.barcode}</td>
+                            <td><code>{cylinder.barcode}</code></td>
                             <td>
                               <div className="actions">
                                 <button type="button" onClick={() => editCylinder(cylinder)} className="sp-btn sp-btn-warning sp-btn-sm">

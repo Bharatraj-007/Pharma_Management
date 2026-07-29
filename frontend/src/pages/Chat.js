@@ -1,4 +1,5 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+impo
+rt { useEffect, useState, useRef, useCallback } from "react";
 import { io } from "socket.io-client";
 import API_BASE_URL from "../config";
 import { usePermissions } from "../hooks/usePermissions";
@@ -86,8 +87,18 @@ function Chat() {
       loadConversations();
     };
 
+    const handleMessageDeleted = (data) => {
+      setMessages((prev) => prev.map(m => {
+        if (String(m._id) === String(data.messageId)) {
+          return { ...m, deletedForEveryone: true, deletedByName: data.deletedByName, text: null, mediaUrl: null, fileName: null };
+        }
+        return m;
+      }));
+    };
+
     activeSocket.on("online_users", handleOnlineUsers);
     activeSocket.on("new_message", handleNewMessage);
+    activeSocket.on("message_deleted", handleMessageDeleted);
     
     if (activeConv) {
       activeSocket.emit("join_room", activeConv.id || activeConv._id);
@@ -98,6 +109,7 @@ function Chat() {
     return () => {
       activeSocket.off("online_users", handleOnlineUsers);
       activeSocket.off("new_message", handleNewMessage);
+      activeSocket.off("message_deleted", handleMessageDeleted);
     };
   }, [myUserId, activeConv]);
 
@@ -502,10 +514,74 @@ function Chat() {
                   const senderName = activeConv.participants?.find(p => String(p._id) === String(m.senderId))?.name || "User";
                   const resolvedMediaUrl = m.mediaUrl ? (m.mediaUrl.startsWith("http") ? m.mediaUrl : `${API_BASE_URL.replace("/api", "")}${m.mediaUrl}`) : "";
 
+                  // Deleted for everyone placeholder
+                  if (m.deletedForEveryone) {
+                    return (
+                      <div
+                        key={m._id || idx}
+                        style={{
+                          alignSelf: authorIsMe ? "flex-end" : "flex-start",
+                          backgroundColor: authorIsMe ? "var(--color-primary)" : "#fff",
+                          color: authorIsMe ? "#fff" : "var(--color-text)",
+                          border: authorIsMe ? "none" : "1px solid var(--color-border)",
+                          padding: "8px 12px", borderRadius: "12px", maxWidth: "70%",
+                          boxShadow: "0 1px 2px rgba(0,0,0,0.05)", opacity: 0.6
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "12px", marginBottom: "4px", fontSize: "10px", opacity: 0.8 }}>
+                          <strong>{authorIsMe ? myName : senderName}</strong>
+                          <span>{new Date(m.timestamp).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</span>
+                        </div>
+                        <p style={{ margin: 0, fontSize: "13px", fontStyle: "italic", display: "flex", alignItems: "center", gap: "6px" }}>
+                          <span>🚫</span> This message was deleted{m.deletedByName ? ` by ${m.deletedByName}` : ""}
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  const handleContextMenu = (e) => {
+                    e.preventDefault();
+                    const sentAt = new Date(m.timestamp || m.createdAt);
+                    const diffMinutes = (new Date() - sentAt) / (1000 * 60);
+                    const canDeleteForEveryone = authorIsMe && diffMinutes <= 10;
+
+                    const choice = window.confirm(
+                      canDeleteForEveryone
+                        ? "Delete this message?\n\nClick OK to delete for EVERYONE.\nClick Cancel then right-click again to delete for you only."
+                        : "Delete this message for you?"
+                    );
+
+                    if (choice && canDeleteForEveryone) {
+                      // Delete for everyone
+                      fetch(`${API_BASE_URL}/api/messages/${m._id}/for-everyone`, {
+                        method: "DELETE", headers
+                      }).then(r => r.json()).then(data => {
+                        if (data.success) {
+                          setMessages(prev => prev.map(msg =>
+                            String(msg._id) === String(m._id)
+                              ? { ...msg, deletedForEveryone: true, deletedByName: data.deletedByName || myName, text: null, mediaUrl: null, fileName: null }
+                              : msg
+                          ));
+                        } else { alert(data.error || "Failed to delete"); }
+                      }).catch(() => alert("Failed to delete message"));
+                    } else if (choice || !canDeleteForEveryone) {
+                      // Delete for me
+                      fetch(`${API_BASE_URL}/api/messages/${m._id}/for-me`, {
+                        method: "DELETE", headers
+                      }).then(r => r.json()).then(data => {
+                        if (data.success) {
+                          setMessages(prev => prev.filter(msg => String(msg._id) !== String(m._id)));
+                        }
+                      }).catch(() => {});
+                    }
+                  };
+
                   return (
                     <div
                       key={m._id || idx}
                       className={`sp-chat-message ${authorIsMe ? "sp-chat-sent" : "sp-chat-received"}`}
+                      onContextMenu={handleContextMenu}
+                      title="Right-click to delete"
                       style={{
                         alignSelf: authorIsMe ? "flex-end" : "flex-start",
                         backgroundColor: authorIsMe ? "var(--color-primary)" : "#fff",
@@ -514,7 +590,8 @@ function Chat() {
                         padding: "8px 12px",
                         borderRadius: "12px",
                         maxWidth: "70%",
-                        boxShadow: "0 1px 2px rgba(0,0,0,0.05)"
+                        boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+                        cursor: "context-menu"
                       }}
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "12px", marginBottom: "4px", fontSize: "10px", opacity: 0.8 }}>

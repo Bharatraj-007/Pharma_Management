@@ -19,6 +19,9 @@ const AuditLog = require("./models/AuditLog");
 const Task = require("./models/Task");
 const LeaveRequest = require("./models/LeaveRequest");
 const Holiday = require("./models/Holiday");
+const Notification = require("./models/Notification");
+const AdvanceRequest = require("./models/AdvanceRequest");
+const Dispatch = require("./models/Dispatch");
 const ExcelJS = require("exceljs");
 const PDFDocument = require("pdfkit");
 const path = require("path");
@@ -80,6 +83,7 @@ io.on("connection", (socket) => {
 
   socket.on("join", (userId) => {
     socket.userId = userId;
+    socket.join(String(userId));
     onlineUsers.set(String(userId), socket.id);
     io.emit("online_users", Array.from(onlineUsers.keys()));
     console.log(`User ${userId} joined with socket ${socket.id}`);
@@ -106,6 +110,79 @@ io.on("connection", (socket) => {
 
 app.set("io", io);
 app.set("onlineUsers", onlineUsers);
+
+const https = require("https");
+
+function sendPushNotification(expoPushToken, title, body, data = {}) {
+  if (!expoPushToken || !expoPushToken.startsWith("ExponentPushToken")) return;
+  
+  const payload = JSON.stringify({
+    to: expoPushToken,
+    sound: "default",
+    title,
+    body,
+    data
+  });
+
+  const options = {
+    hostname: "exp.host",
+    path: "/--/api/v2/push/send",
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+      "Accept-encoding": "gzip, deflate"
+    }
+  };
+
+  const req = https.request(options, (res) => {
+    let responseData = "";
+    res.on("data", (chunk) => {
+      responseData += chunk;
+    });
+    res.on("end", () => {
+      // Done
+    });
+  });
+
+  req.on("error", (err) => {
+    console.error("Push notification error:", err.message);
+  });
+
+  req.write(payload);
+  req.end();
+}
+
+async function createAndSendNotification(userId, type, message, payload = {}) {
+  try {
+    const notification = await Notification.create({
+      userId,
+      type,
+      message,
+      isRead: false
+    });
+
+    // Emit via Socket.IO directly to the user's room
+    if (io) {
+      io.to(String(userId)).emit("notification", notification);
+    }
+
+    // Send push notification if they have token
+    const user = await User.findById(userId).select("expoPushToken").lean();
+    if (user && user.expoPushToken) {
+      sendPushNotification(
+        user.expoPushToken,
+        type === "task" ? "New Task Assigned" : type === "chat" ? "New Message" : "App Update",
+        message,
+        payload
+      );
+    }
+    
+    return notification;
+  } catch (err) {
+    console.error("Error creating/sending notification:", err);
+  }
+}
 app.use(express.json({ limit: '10mb' }));
 const allowedOrigins = [
   "http://localhost:3000",
@@ -218,13 +295,33 @@ async function getNextEmployeeNo(companyKey) {
   return `${prefix}${String(maxSeq + 1).padStart(3, "0")}`;
 }
 
-const getMaterialKind = (company) => company === "shree_ganaapathy" ? "plastic" : "foil";
-const getCylinderKind = (company) => company === "shree_ganaapathy" ? "plastic_cylinder" : "standard";
+const normalizeCompany = (c) => {
+  if (!c) return '';
+  const s = String(c).trim().toLowerCase();
+  if (s === 'company1') return 'bharath';
+  if (s === 'company2') return 'shree_ganaapathy';
+  if (s === 'company3') return 'vel';
+  return s;
+};
+
+const getMaterialKind = (company) => normalizeCompany(company) === "shree_ganaapathy" ? "plastic" : "foil";
+const getCylinderKind = (company) => normalizeCompany(company) === "shree_ganaapathy" ? "plastic_cylinder" : "standard";
 
 async function getRequestCompany(req) {
-  if (req.user.company) return req.user.company;
-  const user = await User.findById(req.user.id).select("company");
-  return user?.company || "bharath";
+  const queryCo = req.query?.company || req.body?.company;
+  const normalizedQueryCo = normalizeCompany(queryCo);
+
+  if (['super_admin', 'ceo'].includes(req.user?.role)) {
+    if (normalizedQueryCo && normalizedQueryCo !== 'all') {
+      return normalizedQueryCo;
+    }
+  }
+
+  if (req.user?.assignedCompany) return normalizeCompany(req.user.assignedCompany);
+  if (req.user?.company) return normalizeCompany(req.user.company);
+
+  const user = await User.findById(req.user.id).select("company assignedCompany role");
+  return normalizeCompany(user?.assignedCompany || user?.company || "bharath");
 }
 
 function companyQuery(company) {
@@ -355,9 +452,30 @@ app.post("/login", async (req, res) => {
   const match = await bcrypt.compare(password, user.password);
   if (!match) return res.status(401).send("Wrong password");
 
-  const token = jwt.sign({ id: user._id, role: user.role, company: user.company }, SECRET, { expiresIn: "1d" });
+  const assignedCompany = user.assignedCompany || user.company || 'bharath';
+  const companyAccess = (user.companyAccess && user.companyAccess.length)
+    ? user.companyAccess
+    : (['super_admin', 'ceo'].includes(user.role) ? ['bharath', 'shree_ganaapathy', 'vel'] : [assignedCompany]);
 
-  res.json({ token, role: user.role, name: user.name, id: user._id, userId: user._id, company: user.company, companyName: COMPANY_NAMES[user.company] });
+  const token = jwt.sign({
+    id: user._id,
+    role: user.role,
+    company: assignedCompany,
+    assignedCompany,
+    companyAccess
+  }, SECRET, { expiresIn: "1d" });
+
+  res.json({
+    token,
+    role: user.role,
+    name: user.name,
+    id: user._id,
+    userId: user._id,
+    company: assignedCompany,
+    assignedCompany,
+    companyAccess,
+    companyName: COMPANY_NAMES[assignedCompany]
+  });
 });
 
 // PASSWORD VALIDATION
@@ -380,25 +498,48 @@ const transporter = {
 const verifyToken = (req, res, next) => {
   const token = req.headers.authorization;
 
-  if (!token) return res.status(403).send("No token");
+  if (!token) return res.status(403).json({ error: "No token" });
 
   try {
     const decoded = jwt.verify(token, SECRET);
     req.user = decoded;
     next();
   } catch {
-    res.status(401).send("Invalid token");
+    res.status(401).json({ error: "Invalid token" });
   }
 };
 
 // 🔐 ROLE CHECK
 const allowRoles = (...roles) => {
   return (req, res, next) => {
-    if (!roles.includes(req.user.role)) {
-      return res.status(403).send("Access denied");
+    // Treat super_admin as admin/ceo level for general route access
+    const userRole = req.user.role;
+    if (roles.includes(userRole) || (userRole === 'super_admin' && (roles.includes('admin') || roles.includes('ceo')))) {
+      return next();
     }
-    next();
+    return res.status(403).json({ error: "Access denied" });
   };
+};
+
+// 🏢 CHECK COMPANY ACCESS MIDDLEWARE
+const checkCompanyAccess = (req, res, next) => {
+  const userRole = req.user?.role;
+  const companyAccess = (req.user?.companyAccess || []).map(normalizeCompany);
+  const userCompany = normalizeCompany(req.user?.assignedCompany || req.user?.company);
+
+  if (['super_admin', 'ceo'].includes(userRole)) {
+    return next(); // Full cross-company access
+  }
+
+  const requestedCompany = normalizeCompany(req.query?.company || req.body?.company);
+
+  if (requestedCompany && requestedCompany !== 'all' && requestedCompany !== userCompany) {
+    if (!companyAccess.includes(requestedCompany)) {
+      return res.status(403).json({ error: 'Access denied: not authorized for this company' });
+    }
+  }
+
+  next();
 };
 
 // GET /api/users — List all employees in same company to start a chat with
@@ -480,11 +621,27 @@ app.get(["/api/conversations", "/api/conversations/:userId"], verifyToken, async
       .populate("participants", "name role email profilePhoto lastActive")
       .sort({ updatedAt: -1 });
 
-    const formattedList = await Promise.all(conversations.map(async (conv) => {
-      const lastMsg = await Message.findOne({ conversationId: conv._id })
-        .sort({ timestamp: -1 })
-        .select("senderId text type timestamp");
-        
+    const conversationIds = conversations.map(c => c._id);
+    const lastMessages = conversationIds.length > 0 ? await Message.aggregate([
+      { $match: { conversationId: { $in: conversationIds } } },
+      { $sort: { conversationId: 1, timestamp: -1 } },
+      { $group: {
+          _id: "$conversationId",
+          senderId: { $first: "$senderId" },
+          text: { $first: "$text" },
+          type: { $first: "$type" },
+          timestamp: { $first: "$timestamp" }
+        }
+      }
+    ]) : [];
+
+    const lastMsgMap = new Map();
+    lastMessages.forEach(msg => {
+      lastMsgMap.set(String(msg._id), msg);
+    });
+
+    const formattedList = conversations.map((conv) => {
+      const lastMsg = lastMsgMap.get(String(conv._id));
       return {
         id: conv._id,
         _id: conv._id,
@@ -498,7 +655,7 @@ app.get(["/api/conversations", "/api/conversations/:userId"], verifyToken, async
           : "",
         lastMessageTime: lastMsg ? lastMsg.timestamp : conv.createdAt
       };
-    }));
+    });
 
     formattedList.sort((a, b) => new Date(b.lastMessageTime) - new Date(a.lastMessageTime));
     res.json(formattedList);
@@ -573,6 +730,16 @@ app.post("/api/messages", verifyToken, async (req, res) => {
       io.to(String(conversationId)).emit("new_message", msg);
     }
 
+    const sender = await User.findById(senderId).select("name").lean();
+    const senderName = sender ? sender.name : "User";
+    const previewText = type === "text" ? msg.text : `[${type === "voice" ? "Voice Message" : type === "image" ? "Photo" : type === "video" ? "Video" : "Attachment"}]`;
+
+    const recipients = conv.participants.filter(p => String(p) !== String(senderId));
+    const notificationPromises = recipients.map(recipientId =>
+      createAndSendNotification(recipientId, "chat", `${senderName}: ${previewText}`, { conversationId })
+    );
+    await Promise.all(notificationPromises).catch(err => console.error("Chat notification failed:", err.message));
+
     return res.json({ message: "Message sent", msg });
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -593,12 +760,80 @@ app.get("/api/messages/:conversationId", verifyToken, async (req, res) => {
     const company = await getRequestCompany(req);
     const msgs = await Message.find({
       company,
-      conversationId
+      conversationId,
+      deletedFor: { $ne: req.user.id } // exclude messages deleted for this user
     })
-      .sort({ timestamp: 1 })
-      .select("senderId conversationId text type mediaUrl fileName duration timestamp createdAt readBy");
+      .sort({ timestamp: -1 })
+      .limit(100)
+      .select("senderId conversationId text type mediaUrl fileName duration timestamp createdAt readBy deletedForEveryone deletedByName deletedFor")
+      .lean();
+
+    msgs.reverse();
 
     return res.json({ messages: msgs });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/messages/:messageId/for-me — Delete message for the requesting user only
+app.delete("/api/messages/:messageId/for-me", verifyToken, async (req, res) => {
+  try {
+    const msg = await Message.findById(req.params.messageId);
+    if (!msg) return res.status(404).json({ error: "Message not found" });
+
+    if (!msg.deletedFor.includes(req.user.id)) {
+      msg.deletedFor.push(req.user.id);
+      await msg.save();
+    }
+
+    return res.json({ success: true, message: "Message deleted for you" });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/messages/:messageId/for-everyone — Delete message for all participants (within 10 min)
+app.delete("/api/messages/:messageId/for-everyone", verifyToken, async (req, res) => {
+  try {
+    const msg = await Message.findById(req.params.messageId);
+    if (!msg) return res.status(404).json({ error: "Message not found" });
+
+    // Only the sender can delete for everyone
+    if (String(msg.senderId) !== String(req.user.id)) {
+      return res.status(403).json({ error: "Only the sender can delete for everyone" });
+    }
+
+    // Check 10-minute window
+    const sentAt = new Date(msg.timestamp || msg.createdAt);
+    const now = new Date();
+    const diffMinutes = (now - sentAt) / (1000 * 60);
+    if (diffMinutes > 10) {
+      return res.status(400).json({ error: "You can only delete for everyone within 10 minutes of sending" });
+    }
+
+    // Get sender name
+    const sender = await User.findById(req.user.id).select("name").lean();
+    const senderName = sender?.name || "Unknown";
+
+    msg.deletedForEveryone = true;
+    msg.deletedByName = senderName;
+    msg.text = null;
+    msg.mediaUrl = null;
+    msg.fileName = null;
+    await msg.save();
+
+    // Broadcast deletion to all participants in the conversation via socket
+    if (io) {
+      io.to(String(msg.conversationId)).emit("message_deleted", {
+        messageId: msg._id,
+        conversationId: msg.conversationId,
+        deletedByName: senderName,
+        deletedForEveryone: true
+      });
+    }
+
+    return res.json({ success: true, message: "Message deleted for everyone", deletedByName: senderName });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -1006,6 +1241,463 @@ app.get(["/profile/id-proof/:filename", "/api/profile/id-proof/:filename"], veri
   }
 });
 
+// POST /api/register-push-token — Register worker device push token
+app.post("/api/register-push-token", verifyToken, async (req, res) => {
+  try {
+    const { token } = req.body;
+    await User.findByIdAndUpdate(req.user.id, { expoPushToken: token || "" });
+    res.json({ message: "Push token registered successfully" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/notifications — Fetch user's notifications
+app.get("/api/notifications", verifyToken, async (req, res) => {
+  try {
+    const notifications = await Notification.find({ userId: req.user.id })
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .lean();
+    res.json(notifications);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/notifications/read — Mark all user notifications as read
+app.put("/api/notifications/read", verifyToken, async (req, res) => {
+  try {
+    await Notification.updateMany({ userId: req.user.id, isRead: false }, { isRead: true });
+    res.json({ message: "Notifications marked as read" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/notifications — Send a notification manually (app update etc)
+app.post("/api/notifications", verifyToken, allowRoles("admin", "ceo"), async (req, res) => {
+  try {
+    const { type, message, userId } = req.body;
+    const company = await getRequestCompany(req);
+    
+    if (type === "app_update") {
+      // Send to all users in the company!
+      const users = await User.find({ company }).select("_id").lean();
+      const promises = users.map(u => createAndSendNotification(u._id, "app_update", message));
+      await Promise.all(promises);
+      return res.json({ message: "App update notifications sent successfully" });
+    }
+
+    if (!userId) return res.status(400).json({ error: "userId is required for this notification type" });
+    const notification = await createAndSendNotification(userId, type, message);
+    res.json({ message: "Notification sent successfully", notification });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/salary/:workerId — Fetch salary breakdown
+app.get("/api/salary/:workerId", verifyToken, async (req, res) => {
+  try {
+    const { workerId } = req.params;
+    const month = req.query.month || new Date().toISOString().slice(0, 7); // format: YYYY-MM
+    
+    // Authorization check: workers can only view their own salary
+    if (req.user.role === "worker" && String(req.user.id) !== String(workerId)) {
+      return res.status(403).json({ error: "Forbidden: You can only view your own salary" });
+    }
+
+    const worker = await User.findById(workerId).select("name employeeNo role salaryRate salaryType otRate company").lean();
+    if (!worker) return res.status(404).json({ error: "Worker not found" });
+
+    // 1. Fetch attendance records for that month
+    const startOfMonth = `${month}-01`;
+    // Calculate total days in this specific month
+    const [yearStr, monthStr] = month.split("-");
+    const year = parseInt(yearStr);
+    const monthIdx = parseInt(monthStr) - 1; // 0-indexed
+    const daysInMonth = new Date(year, monthIdx + 1, 0).getDate();
+    const endOfMonth = `${month}-${String(daysInMonth).padStart(2, "0")}`;
+
+    const records = await Attendance.find({
+      company: worker.company,
+      workerName: worker.name,
+      date: { $gte: startOfMonth, $lte: endOfMonth }
+    }).sort({ date: 1 }).lean();
+
+    // 2. Fetch approved advances for that month
+    const advances = await AdvanceRequest.find({
+      workerId: worker._id,
+      status: "approved",
+      deductedFromMonth: month
+    }).lean();
+
+    const totalAdvanceDeducted = advances.reduce((sum, adv) => sum + (adv.amountRequested || 0), 0);
+
+    // 3. Fetch pre-configured holidays for that month
+    const companyHolidays = await Holiday.find({
+      company: worker.company,
+      date: { $gte: startOfMonth, $lte: endOfMonth }
+    }).lean();
+    const holidayDates = new Set(companyHolidays.map(h => h.date));
+
+    // 4. Calculate calendar days
+    let datesList = [];
+    let current = new Date(year, monthIdx, 1);
+    const lastDay = new Date(year, monthIdx, daysInMonth);
+    while (current <= lastDay) {
+      datesList.push(current.toISOString().split("T")[0]);
+      current.setDate(current.getDate() + 1);
+    }
+
+    // Build attendance mapping
+    const recordsMap = new Map();
+    records.forEach(r => {
+      recordsMap.set(r.date, r);
+    });
+
+    let daysPresent = 0;
+    let daysAbsent = 0;
+    let daysHalfDay = 0;
+    let daysPaidLeave = 0;
+    let otHoursTotal = 0;
+    let otPayEarned = 0;
+    let sundayHolidayODBonus = 0; // Worked on Sunday/Holiday bonus
+    let details = [];
+
+    // Calculate daily base rate
+    let dailyBaseRate = 0;
+    if (worker.salaryType === "daily") {
+      dailyBaseRate = worker.salaryRate || 0;
+    } else if (worker.salaryType === "hourly") {
+      dailyBaseRate = (worker.salaryRate || 0) * 9; // standard 9h shift
+    } else if (worker.salaryType === "monthly") {
+      dailyBaseRate = (worker.salaryRate || 0) / daysInMonth;
+    }
+
+    for (const d of datesList) {
+      const dateObj = new Date(d);
+      const isSunday = dateObj.getDay() === 0;
+      const isHoliday = holidayDates.has(d);
+      const record = recordsMap.get(d);
+
+      let status = "Absent";
+      let hours = 0;
+      let ot = 0;
+      let dailyEarnings = 0;
+
+      if (record) {
+        hours = record.hoursWorked || 0;
+        ot = record.overtime || 0;
+        const statusLower = (record.status || "").toLowerCase();
+        
+        if (["present", "early", "on time", "late", "on-time"].includes(statusLower)) {
+          status = "Present";
+          daysPresent++;
+          dailyEarnings = dailyBaseRate + (ot * (worker.otRate || record.otRate || 0));
+        } else if (statusLower === "half-day" || statusLower === "half day") {
+          status = "Half Day";
+          daysHalfDay++;
+          dailyEarnings = (dailyBaseRate / 2) + (ot * (worker.otRate || record.otRate || 0));
+        } else if (statusLower === "paid leave" || statusLower === "paid-leave" || statusLower === "paidleave") {
+          status = "Paid Leave";
+          daysPaidLeave++;
+          dailyEarnings = dailyBaseRate;
+        } else {
+          status = "Absent";
+          daysAbsent++;
+          dailyEarnings = 0;
+        }
+
+        // Sunday or Holiday Worked OD pay bonus
+        if (isSunday || isHoliday) {
+          // If they worked, they get: daily earnings (for their shift) + OD bonus (another base day rate)
+          const bonus = dailyBaseRate;
+          sundayHolidayODBonus += bonus;
+          dailyEarnings += bonus;
+        }
+        
+        otHoursTotal += ot;
+        otPayEarned += ot * (worker.otRate || record.otRate || 0);
+
+      } else {
+        // No manual record found. If Sunday or holiday, it is automatically a Paid Leave!
+        if (isSunday || isHoliday) {
+          status = "Paid Leave";
+          daysPaidLeave++;
+          dailyEarnings = dailyBaseRate;
+        } else {
+          status = "Absent";
+          daysAbsent++;
+          dailyEarnings = 0;
+        }
+      }
+
+      details.push({
+        date: d,
+        status,
+        hoursWorked: hours,
+        overtime: ot,
+        earnings: Math.round(dailyEarnings * 100) / 100,
+        isSundayOrHoliday: isSunday || isHoliday
+      });
+    }
+
+    // Calculations
+    const baseSalaryEarned = (daysPresent * dailyBaseRate) + (daysHalfDay * (dailyBaseRate / 2)) + (daysPaidLeave * dailyBaseRate);
+    
+    // Deduction calculation:
+    // Absent days deduction (what they lost by not working on standard working days)
+    const absentDeduction = daysAbsent * dailyBaseRate;
+
+    // Final calculations
+    const grossSalary = baseSalaryEarned + otPayEarned + sundayHolidayODBonus;
+    const finalNetSalary = grossSalary - totalAdvanceDeducted;
+
+    res.json({
+      worker: {
+        id: worker._id,
+        name: worker.name,
+        employeeNo: worker.employeeNo,
+        salaryRate: worker.salaryRate,
+        salaryType: worker.salaryType,
+        otRate: worker.otRate
+      },
+      month,
+      daysInMonth,
+      summary: {
+        daysPresent,
+        daysAbsent,
+        daysHalfDay,
+        daysPaidLeave,
+        otHoursTotal,
+        otPayEarned: Math.round(otPayEarned * 100) / 100,
+        sundayHolidayODBonus: Math.round(sundayHolidayODBonus * 100) / 100,
+        totalAdvanceDeducted: Math.round(totalAdvanceDeducted * 100) / 100,
+        baseSalaryEarned: Math.round(baseSalaryEarned * 100) / 100,
+        absentDeduction: Math.round(absentDeduction * 100) / 100,
+        grossSalary: Math.round(grossSalary * 100) / 100,
+        finalNetSalary: Math.max(0, Math.round(finalNetSalary * 100) / 100)
+      },
+      details
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+const advanceUpload = multer({ storage: chatStorage }).single("qrCode");
+
+// POST /api/advance/request — Worker submits advance request
+app.post("/api/advance/request", verifyToken, advanceUpload, async (req, res) => {
+  try {
+    const { amountRequested, deductedFromMonth } = req.body;
+    if (!amountRequested) return res.status(400).json({ error: "amountRequested is required" });
+    if (!deductedFromMonth) return res.status(400).json({ error: "deductedFromMonth (YYYY-MM) is required" });
+
+    const company = await getRequestCompany(req);
+    let qrCodeImageUrl = "";
+    if (req.file) {
+      qrCodeImageUrl = await uploadToCloudinary(req.file.path, company);
+    }
+
+    const request = await AdvanceRequest.create({
+      workerId: req.user.id,
+      amountRequested: Number(amountRequested),
+      qrCodeImageUrl,
+      status: "pending",
+      deductedFromMonth
+    });
+
+    // Notify admins/ceos in the same company
+    const admins = await User.find({ company, role: { $in: ["admin", "ceo"] } }).select("_id").lean();
+    const user = await User.findById(req.user.id).select("name").lean();
+    const notificationPromises = admins.map(admin =>
+      createAndSendNotification(admin._id, "task", `Advance request from ${user?.name || "Worker"}: ₹${amountRequested}`)
+    );
+    await Promise.all(notificationPromises);
+
+    res.json({ message: "Advance request submitted successfully", request });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/advance/:id/approve — Admin approves/rejects advance request
+app.put("/api/advance/:id/approve", verifyToken, allowRoles("admin", "ceo"), async (req, res) => {
+  try {
+    const { status, paymentMethod } = req.body; // approved / rejected, cash / online
+    if (!status || !["approved", "rejected"].includes(status)) {
+      return res.status(400).json({ error: "status must be approved or rejected" });
+    }
+
+    const request = await AdvanceRequest.findById(req.params.id);
+    if (!request) return res.status(404).json({ error: "Request not found" });
+
+    if (status === "approved" && !paymentMethod) {
+      return res.status(400).json({ error: "paymentMethod is required for approval" });
+    }
+
+    request.status = status;
+    if (status === "approved") {
+      request.paymentMethod = paymentMethod;
+      request.approvedBy = req.user.id;
+      request.approvedDate = new Date();
+    }
+    await request.save();
+
+    // Notify worker
+    const admin = await User.findById(req.user.id).select("name").lean();
+    await createAndSendNotification(
+      request.workerId,
+      "task",
+      `Your advance request for ₹${request.amountRequested} was ${status} by ${admin?.name || "Admin"}`
+    );
+
+    res.json({ message: `Advance request ${status} successfully`, request });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/advance/report — Admin fetches monthly advance list
+app.get("/api/advance/report", verifyToken, allowRoles("admin", "ceo"), async (req, res) => {
+  try {
+    const month = req.query.month || new Date().toISOString().slice(0, 7); // format: YYYY-MM
+    const company = await getRequestCompany(req);
+
+    // Find all users in company
+    const users = await User.find({ company }).select("_id name employeeNo").lean();
+    const userIds = users.map(u => u._id);
+    const userMap = new Map(users.map(u => [String(u._id), u]));
+
+    const requests = await AdvanceRequest.find({
+      workerId: { $in: userIds },
+      deductedFromMonth: month
+    }).populate("approvedBy", "name").sort({ createdAt: -1 }).lean();
+
+    const report = requests.map(r => {
+      const worker = userMap.get(String(r.workerId)) || {};
+      return {
+        _id: r._id,
+        workerName: worker.name || "Unknown",
+        employeeNo: worker.employeeNo || "N/A",
+        amountRequested: r.amountRequested,
+        status: r.status,
+        paymentMethod: r.paymentMethod || "—",
+        approvedBy: r.approvedBy ? r.approvedBy.name : "—",
+        date: r.approvedDate ? r.approvedDate.toISOString().split("T")[0] : r.createdAt.toISOString().split("T")[0]
+      };
+    });
+
+    res.json(report);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/advance/report/export — Download advance report as Excel or PDF
+app.get("/api/advance/report/export", verifyToken, allowRoles("admin", "ceo"), async (req, res) => {
+  try {
+    const month = req.query.month || new Date().toISOString().slice(0, 7); // format: YYYY-MM
+    const format = req.query.format || "excel"; // excel / pdf
+    const company = await getRequestCompany(req);
+
+    // Find all users in company
+    const users = await User.find({ company }).select("_id name employeeNo").lean();
+    const userIds = users.map(u => u._id);
+    const userMap = new Map(users.map(u => [String(u._id), u]));
+
+    const requests = await AdvanceRequest.find({
+      workerId: { $in: userIds },
+      deductedFromMonth: month,
+      status: "approved" // only approved advances in report exports
+    }).populate("approvedBy", "name").sort({ approvedDate: -1 }).lean();
+
+    const report = requests.map(r => {
+      const worker = userMap.get(String(r.workerId)) || {};
+      return {
+        workerName: worker.name || "Unknown",
+        employeeNo: worker.employeeNo || "N/A",
+        amountRequested: r.amountRequested,
+        paymentMethod: r.paymentMethod || "—",
+        approvedBy: r.approvedBy ? r.approvedBy.name : "—",
+        date: r.approvedDate ? r.approvedDate.toISOString().split("T")[0] : "—"
+      };
+    });
+
+    if (format === "pdf") {
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename=Advance_Report_${month}.pdf`);
+
+      const doc = new PDFDocument({ margin: 30 });
+      doc.pipe(res);
+
+      doc.fontSize(16).text(`Smart Pharma - Monthly Advance Report (${month})`, { align: "center" }).moveDown(1);
+      doc.fontSize(10).text(`Company: ${company.toUpperCase()}`, { align: "left" }).moveDown(0.5);
+
+      // Render table
+      doc.font("Helvetica-Bold").fontSize(10);
+      doc.text("Worker Name", 30, doc.y, { width: 130, continued: true });
+      doc.text("Emp No", 160, doc.y, { width: 70, continued: true });
+      doc.text("Amount (₹)", 230, doc.y, { width: 80, continued: true });
+      doc.text("Method", 310, doc.y, { width: 70, continued: true });
+      doc.text("Approved By", 380, doc.y, { width: 90, continued: true });
+      doc.text("Date Approved", 470, doc.y, { width: 90 });
+      doc.moveDown(0.2);
+
+      doc.moveTo(30, doc.y).lineTo(560, doc.y).stroke().moveDown(0.4);
+      doc.font("Helvetica").fontSize(9);
+
+      let totalAdvance = 0;
+      report.forEach((item) => {
+        totalAdvance += item.amountRequested;
+        doc.text(item.workerName, 30, doc.y, { width: 130, continued: true });
+        doc.text(item.employeeNo, 160, doc.y, { width: 70, continued: true });
+        doc.text(`₹${item.amountRequested}`, 230, doc.y, { width: 80, continued: true });
+        doc.text(item.paymentMethod.toUpperCase(), 310, doc.y, { width: 70, continued: true });
+        doc.text(item.approvedBy, 380, doc.y, { width: 90, continued: true });
+        doc.text(item.date, 470, doc.y, { width: 90 });
+        doc.moveDown(0.3);
+      });
+
+      doc.moveDown(1);
+      doc.font("Helvetica-Bold").fontSize(11);
+      doc.text(`Total Advances Given: ₹${totalAdvance}`, 30, doc.y);
+
+      doc.end();
+      return;
+    }
+
+    // Default to Excel
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename=Advance_Report_${month}.xlsx`);
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Advance Report");
+    sheet.columns = [
+      { header: "Worker Name", key: "workerName", width: 24 },
+      { header: "Emp No", key: "employeeNo", width: 12 },
+      { header: "Amount Requested (₹)", key: "amountRequested", width: 20 },
+      { header: "Payment Method", key: "paymentMethod", width: 16 },
+      { header: "Approved By", key: "approvedBy", width: 20 },
+      { header: "Date Approved", key: "date", width: 16 }
+    ];
+
+    report.forEach(item => {
+      sheet.addRow(item);
+    });
+
+    await workbook.xlsx.write(res);
+    res.end();
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /staff — CEO and Admin can view all company staff profiles
 app.get("/staff", verifyToken, allowRoles("admin", "ceo"), async (req, res) => {
   try {
@@ -1327,6 +2019,10 @@ app.post("/tasks", verifyToken, allowRoles("admin", "manager", "ceo"), async (re
     });
 
     await task.save();
+    const workerUser = await User.findOne({ name: worker_name.trim(), company }).select("_id").lean();
+    if (workerUser) {
+      await createAndSendNotification(workerUser._id, "task", `New Task Assigned: ${task.product_name || 'Stock Task'} (${colourCount || 1} Colour)`);
+    }
     res.json({ message: "Task assigned successfully", task });
   } catch (err) {
     res.status(500).send(err.message);
@@ -1389,7 +2085,7 @@ app.post("/add-foil", verifyToken, allowRoles("admin", "manager", "ceo"), async 
 // 🔧 ADD CYLINDER
 app.post("/add-cylinder", verifyToken, allowRoles("admin", "manager", "ceo"), async (req, res) => {
   try {
-    const { product_name, colors, size_inches, manufacturer, manufacture_date } = req.body;
+    const { product_name, colors, size_inches, manufacturer, manufacture_date, client_company } = req.body;
     const company = await getRequestCompany(req);
 
     if (!product_name || !colors || !size_inches || !manufacturer || !manufacture_date) {
@@ -1401,6 +2097,7 @@ app.post("/add-cylinder", verifyToken, allowRoles("admin", "manager", "ceo"), as
     const cylinder = new Cylinder({
       company,
       cylinderKind: getCylinderKind(company),
+      client_company: client_company || (company === "vel" ? "Customer Company" : company),
       product_name,
       colors,
       size_inches,
@@ -1425,10 +2122,12 @@ app.post("/add-cylinder", verifyToken, allowRoles("admin", "manager", "ceo"), as
 
 // ✅ GET ALL FOILS
 app.get("/foils", verifyToken, allowRoles("admin", "manager", "ceo"), async (req, res) => {
-
   try {
     const company = await getRequestCompany(req);
-    const foils = company === "vel" ? [] : await Foil.find({ company });
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 200;
+    const skip = (page - 1) * limit;
+    const foils = company === "vel" ? [] : await Foil.find({ company }).skip(skip).limit(limit).lean();
     res.json(foils);
   } catch (err) {
     res.status(500).send(err.message);
@@ -1525,7 +2224,10 @@ app.delete("/foils/:id", verifyToken, allowRoles("admin", "manager", "ceo"), asy
 app.get("/cylinders", verifyToken, allowRoles("admin", "manager", "ceo"), async (req, res) => {
   try {
     const company = await getRequestCompany(req);
-    const cylinders = await Cylinder.find({ company });
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 200;
+    const skip = (page - 1) * limit;
+    const cylinders = await Cylinder.find({ company }).skip(skip).limit(limit).lean();
     res.json(cylinders);
   } catch (err) {
     res.status(500).send(err.message);
@@ -1535,7 +2237,7 @@ app.get("/cylinders", verifyToken, allowRoles("admin", "manager", "ceo"), async 
 // ✅ UPDATE CYLINDER
 app.put("/cylinders/:id", verifyToken, allowRoles("admin", "manager", "ceo"), async (req, res) => {
   try {
-    const { product_name, colors, size_inches, manufacturer, manufacture_date } = req.body;
+    const { product_name, colors, size_inches, manufacturer, manufacture_date, client_company } = req.body;
     const company = await getRequestCompany(req);
 
     if (!product_name || !colors || !size_inches || !manufacturer || !manufacture_date) {
@@ -1549,6 +2251,7 @@ app.put("/cylinders/:id", verifyToken, allowRoles("admin", "manager", "ceo"), as
     const before = cylinder.toObject();
     cylinder.company = cylinder.company || company;
     cylinder.cylinderKind = getCylinderKind(company);
+    if (client_company) cylinder.client_company = client_company;
     cylinder.product_name = product_name;
     cylinder.colors = Number(colors);
     cylinder.size_inches = Number(size_inches);
@@ -1598,7 +2301,10 @@ app.delete("/cylinders/:id", verifyToken, allowRoles("admin", "manager", "ceo"),
 app.get("/stock-logs", verifyToken, allowRoles("admin", "manager", "ceo"), async (req, res) => {
   try {
     const company = await getRequestCompany(req);
-    const logs = await AuditLog.find({ company }).sort({ createdAt: -1 }).limit(100);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 100;
+    const skip = (page - 1) * limit;
+    const logs = await AuditLog.find({ company }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
     res.json(logs);
   } catch (err) {
     res.status(500).send(err.message);
@@ -1608,7 +2314,10 @@ app.get("/stock-logs", verifyToken, allowRoles("admin", "manager", "ceo"), async
 app.get("/audit-logs", verifyToken, allowRoles("admin", "manager", "ceo"), async (req, res) => {
   try {
     const company = await getRequestCompany(req);
-    const logs = await AuditLog.find({ company }).sort({ createdAt: -1 }).limit(200);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 200;
+    const skip = (page - 1) * limit;
+    const logs = await AuditLog.find({ company }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
     res.json(logs);
   } catch (err) {
     res.status(500).send(err.message);
@@ -1712,6 +2421,10 @@ app.post('/tasks-create', verifyToken, allowRoles("admin", "manager", "ceo"), ta
     });
 
     await task.save();
+    const workerUser = await User.findOne({ name: worker_name.trim(), company }).select("_id").lean();
+    if (workerUser) {
+      await createAndSendNotification(workerUser._id, "task", `New Task Assigned: ${task.product_name || 'Stock Task'} (${parsedColourCount || 1} Colour)`);
+    }
 
     createAuditLog({
       req,
@@ -2928,6 +3641,323 @@ app.put("/api/leave/:id", verifyToken, allowRoles("admin", "ceo", "manager"), as
         reason: updatedLeave.reason
       }
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 🚚 ==================== DISPATCH MODULE ENDPOINTS ====================
+
+function getProductTypeForCompany(company) {
+  const norm = normalizeCompany(company);
+  if (norm === 'vel' || norm === 'company3') return 'cylinder';
+  if (norm === 'shree_ganaapathy' || norm === 'company2') return 'roll';
+  return 'foil';
+}
+
+// 1️⃣ CREATE DISPATCH (POST /api/dispatch and POST /dispatch)
+app.post(["/dispatch", "/api/dispatch"], verifyToken, checkCompanyAccess, async (req, res) => {
+  try {
+    const requestCompany = await getRequestCompany(req);
+    const bodyCompany = normalizeCompany(req.body.company) || requestCompany;
+    const productType = req.body.productType || getProductTypeForCompany(bodyCompany);
+
+    const {
+      productName, quantity, destinationType, destinationCompany,
+      dispatchDate, deliveryMethod, customDeliveryMethod, remarks,
+      numberOfColors, size, manufacturer,
+      colors, weightKg, dimensions,
+      rollColors, rollWeightKg, rollSize
+    } = req.body;
+
+    if (!productName || !quantity || !destinationCompany || !deliveryMethod) {
+      return res.status(400).json({ error: "Product name, quantity, destination, and delivery method are required." });
+    }
+
+    if (productType === 'cylinder' && (!numberOfColors || !size)) {
+      return res.status(400).json({ error: "Cylinder dispatch requires Number of Colors and Size (inches)." });
+    }
+    if (productType === 'foil' && (!weightKg || !dimensions)) {
+      return res.status(400).json({ error: "Foil dispatch requires Weight (kg) and Dimensions." });
+    }
+    if (productType === 'roll' && (!rollWeightKg || !rollSize)) {
+      return res.status(400).json({ error: "Roll dispatch requires Weight (kg) and Roll Size." });
+    }
+
+    const dispatch = new Dispatch({
+      company: bodyCompany,
+      productType,
+      productName,
+      quantity: Number(quantity),
+      destinationType: destinationType || 'external',
+      destinationCompany,
+      dispatchDate: dispatchDate ? new Date(dispatchDate) : new Date(),
+      deliveryMethod,
+      customDeliveryMethod: customDeliveryMethod || '',
+      status: req.body.status || 'dispatched',
+      dispatchedBy: req.user.id,
+      dispatchedByName: req.user.name || 'Admin',
+      remarks: remarks || '',
+      numberOfColors: numberOfColors ? Number(numberOfColors) : undefined,
+      size: size || '',
+      manufacturer: manufacturer || (bodyCompany === 'vel' ? 'Vel Gravure' : ''),
+      colors: Array.isArray(colors) ? colors : (colors ? String(colors).split(',').map(s=>s.trim()) : []),
+      weightKg: weightKg ? Number(weightKg) : undefined,
+      dimensions: dimensions || '',
+      rollColors: Array.isArray(rollColors) ? rollColors : (rollColors ? String(rollColors).split(',').map(s=>s.trim()) : []),
+      rollWeightKg: rollWeightKg ? Number(rollWeightKg) : undefined,
+      rollSize: rollSize || ''
+    });
+
+    await dispatch.save();
+
+    await createAuditLog({
+      req,
+      action: "create",
+      itemType: "dispatch",
+      before: null,
+      after: dispatch.toObject()
+    });
+
+    res.status(201).json({ message: "✅ Dispatch record created successfully", dispatch });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to create dispatch: " + err.message });
+  }
+});
+
+// 2️⃣ LIST DISPATCHES (GET /api/dispatch and GET /dispatch)
+app.get(["/dispatch", "/api/dispatch"], verifyToken, checkCompanyAccess, async (req, res) => {
+  try {
+    const requestCompany = await getRequestCompany(req);
+    const filterCompany = req.query.company ? normalizeCompany(req.query.company) : requestCompany;
+    const { productType, from, to, status } = req.query;
+
+    const query = {};
+    if (filterCompany && filterCompany !== 'all') {
+      query.company = filterCompany;
+    }
+    if (productType) {
+      query.productType = productType;
+    }
+    if (status) {
+      query.status = status;
+    }
+    if (from || to) {
+      query.dispatchDate = {};
+      if (from) {
+        const fromDate = new Date(from);
+        fromDate.setHours(0, 0, 0, 0);
+        query.dispatchDate.$gte = fromDate;
+      }
+      if (to) {
+        const toDate = new Date(to);
+        toDate.setHours(23, 59, 59, 999);
+        query.dispatchDate.$lte = toDate;
+      }
+    }
+
+    const dispatches = await Dispatch.find(query).sort({ dispatchDate: -1 }).lean();
+    res.json(dispatches);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3️⃣ DISPATCH REPORT DATA (GET /api/dispatch/report and GET /dispatch/report)
+app.get(["/dispatch/report", "/api/dispatch/report"], verifyToken, checkCompanyAccess, async (req, res) => {
+  try {
+    const requestCompany = await getRequestCompany(req);
+    const filterCompany = req.query.company ? normalizeCompany(req.query.company) : requestCompany;
+    const { from, to } = req.query;
+
+    const query = {};
+    if (filterCompany && filterCompany !== 'all') {
+      query.company = filterCompany;
+    }
+    if (from || to) {
+      query.dispatchDate = {};
+      if (from) {
+        const fromDate = new Date(from);
+        fromDate.setHours(0, 0, 0, 0);
+        query.dispatchDate.$gte = fromDate;
+      }
+      if (to) {
+        const toDate = new Date(to);
+        toDate.setHours(23, 59, 59, 999);
+        query.dispatchDate.$lte = toDate;
+      }
+    }
+
+    const items = await Dispatch.find(query).sort({ dispatchDate: -1 }).lean();
+
+    let totalQuantity = 0;
+    const totalByDestination = {};
+    const totalByDeliveryMethod = {};
+    const totalByProductType = {};
+
+    items.forEach((item) => {
+      totalQuantity += Number(item.quantity || 0);
+
+      const destKey = item.destinationCompany || item.destinationType || 'Other';
+      totalByDestination[destKey] = (totalByDestination[destKey] || 0) + Number(item.quantity || 0);
+
+      const methodKey = item.deliveryMethod === 'Other' ? (item.customDeliveryMethod || 'Other') : (item.deliveryMethod || 'Standard');
+      totalByDeliveryMethod[methodKey] = (totalByDeliveryMethod[methodKey] || 0) + Number(item.quantity || 0);
+
+      const typeKey = item.productType || 'other';
+      totalByProductType[typeKey] = (totalByProductType[typeKey] || 0) + Number(item.quantity || 0);
+    });
+
+    res.json({
+      company: filterCompany,
+      fromDate: from || null,
+      toDate: to || null,
+      count: items.length,
+      items,
+      summary: {
+        totalQuantity,
+        totalByDestination,
+        totalByDeliveryMethod,
+        totalByProductType
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 4️⃣ EXPORT DISPATCH REPORT (GET /api/dispatch/report/export and GET /dispatch/report/export)
+app.get(["/dispatch/report/export", "/api/dispatch/report/export"], verifyToken, checkCompanyAccess, async (req, res) => {
+  try {
+    const requestCompany = await getRequestCompany(req);
+    const filterCompany = req.query.company ? normalizeCompany(req.query.company) : requestCompany;
+    const format = (req.query.format || 'excel').toLowerCase();
+    const { from, to } = req.query;
+
+    const query = {};
+    if (filterCompany && filterCompany !== 'all') {
+      query.company = filterCompany;
+    }
+    if (from || to) {
+      query.dispatchDate = {};
+      if (from) {
+        const fromDate = new Date(from);
+        fromDate.setHours(0, 0, 0, 0);
+        query.dispatchDate.$gte = fromDate;
+      }
+      if (to) {
+        const toDate = new Date(to);
+        toDate.setHours(23, 59, 59, 999);
+        query.dispatchDate.$lte = toDate;
+      }
+    }
+
+    const items = await Dispatch.find(query).sort({ dispatchDate: -1 }).lean();
+
+    const companyDisplayName = filterCompany === 'vel' ? 'Vel Gravure (Company 3 - Cylinder)'
+      : filterCompany === 'shree_ganaapathy' ? 'Shree Ganaapathy Roto Prints (Company 2 - Roll)'
+      : filterCompany === 'bharath' ? 'Bharath Enterprises (Company 1 - Foil)'
+      : 'All Companies';
+
+    const fromStr = from || 'Start';
+    const toStr = to || 'Present';
+    const fileName = `Dispatch_Report_${filterCompany}_${fromStr}_to_${toStr}`;
+
+    if (format === 'excel') {
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Dispatch Report');
+
+      worksheet.mergeCells('A1:I1');
+      worksheet.getCell('A1').value = `DISPATCH REPORT — ${companyDisplayName.toUpperCase()}`;
+      worksheet.getCell('A1').font = { bold: true, size: 14 };
+      worksheet.getCell('A1').alignment = { horizontal: 'center' };
+
+      worksheet.mergeCells('A2:I2');
+      worksheet.getCell('A2').value = `Date Range: ${fromStr} to ${toStr} | Generated: ${new Date().toLocaleString()}`;
+      worksheet.getCell('A2').font = { italic: true, size: 10 };
+      worksheet.getCell('A2').alignment = { horizontal: 'center' };
+
+      worksheet.addRow([]);
+
+      let headers = ['S.No', 'Product Name', 'Colors', 'Spec 1', 'Spec 2', 'Qty', 'Destination', 'Delivery Method', 'Status'];
+      if (filterCompany === 'vel') {
+        headers = ['S.No', 'Product Name', 'Colors', 'Size (Inches)', 'Manufacturer', 'Qty', 'Destination', 'Delivery Method', 'Status'];
+      } else if (filterCompany === 'shree_ganaapathy') {
+        headers = ['S.No', 'Product Name', 'Colors', 'Weight (kg)', 'Roll Size', 'Qty', 'Destination', 'Delivery Method', 'Status'];
+      } else if (filterCompany === 'bharath') {
+        headers = ['S.No', 'Product Name', 'Colors', 'Weight (kg)', 'Dimensions', 'Qty', 'Destination', 'Delivery Method', 'Status'];
+      }
+
+      const headerRow = worksheet.addRow(headers);
+      headerRow.font = { bold: true };
+      headerRow.eachCell((cell) => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+      });
+
+      let totalQty = 0;
+      items.forEach((item, index) => {
+        totalQty += Number(item.quantity || 0);
+        const colorsStr = Array.isArray(item.colors) && item.colors.length ? item.colors.join(', ')
+          : Array.isArray(item.rollColors) && item.rollColors.length ? item.rollColors.join(', ')
+          : (item.numberOfColors ? `${item.numberOfColors} colors` : '-');
+
+        const methodStr = item.deliveryMethod === 'Other' ? (item.customDeliveryMethod || 'Other') : (item.deliveryMethod || '-');
+
+        let spec1 = '-';
+        let spec2 = '-';
+
+        if (item.productType === 'cylinder') {
+          spec1 = item.size ? `${item.size} IN` : '-';
+          spec2 = item.manufacturer || 'Vel Gravure';
+        } else if (item.productType === 'roll') {
+          spec1 = item.rollWeightKg ? `${item.rollWeightKg} kg` : '-';
+          spec2 = item.rollSize || '-';
+        } else {
+          spec1 = item.weightKg ? `${item.weightKg} kg` : '-';
+          spec2 = item.dimensions || '-';
+        }
+
+        worksheet.addRow([
+          index + 1,
+          item.productName,
+          colorsStr,
+          spec1,
+          spec2,
+          item.quantity,
+          item.destinationCompany,
+          methodStr,
+          item.status
+        ]);
+      });
+
+      worksheet.addRow([]);
+      const summaryHeaderRow = worksheet.addRow(['SUMMARY TOTALS']);
+      summaryHeaderRow.font = { bold: true };
+      worksheet.addRow(['Total Quantity Dispatched:', totalQty]);
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}.xlsx"`);
+      await workbook.xlsx.write(res);
+      return res.end();
+    } else {
+      const doc = new PDFDocument({ margin: 30 });
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}.pdf"`);
+      doc.pipe(res);
+
+      doc.fontSize(16).text(`DISPATCH BILL / REPORT`, { align: 'center' });
+      doc.fontSize(12).text(companyDisplayName, { align: 'center' });
+      doc.fontSize(10).text(`Date: ${fromStr} to ${toStr} | Generated: ${new Date().toLocaleDateString()}`, { align: 'center' });
+      doc.moveDown();
+
+      items.forEach((item, index) => {
+        doc.fontSize(10).text(`${index + 1}. ${item.productName} — Qty: ${item.quantity} | Dest: ${item.destinationCompany} | Method: ${item.deliveryMethod}`);
+      });
+
+      doc.moveDown();
+      doc.fontSize(12).text(`Total Quantity Dispatched: ${items.reduce((s, i) => s + (i.quantity || 0), 0)}`);
+      doc.end();
+    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

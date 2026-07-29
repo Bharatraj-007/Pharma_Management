@@ -18,8 +18,7 @@ const foilSchema = new mongoose.Schema({
   serial: { type: String, default: '0000' }
 });
 
-
-
-
+foilSchema.index({ company: 1 });
+foilSchema.index({ qrPayload: 1 });
 
 module.exports = mongoose.model("Foil", foilSchema);

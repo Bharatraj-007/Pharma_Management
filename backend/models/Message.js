@@ -11,7 +11,11 @@ const MessageSchema = new mongoose.Schema(
     fileName: { type: String }, // For documents
     duration: { type: Number }, // For video/voice in seconds
     timestamp: { type: Date, default: () => new Date(), index: true },
-    readBy: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }]
+    readBy: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+    // Deletion tracking
+    deletedForEveryone: { type: Boolean, default: false },
+    deletedByName: { type: String }, // Name of user who deleted for everyone
+    deletedFor: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }] // Per-user "delete for me"
   },
   { timestamps: true }
 );

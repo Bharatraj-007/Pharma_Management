@@ -167,8 +167,25 @@ export default function ChatScreen() {
       loadConversations();
     };
 
+    const handleMessageDeleted = (data) => {
+      setMessages((prev) => prev.map(m => {
+        if (String(m._id) === String(data.messageId)) {
+          return {
+            ...m,
+            deletedForEveryone: true,
+            deletedByName: data.deletedByName,
+            text: null,
+            mediaUrl: null,
+            fileName: null
+          };
+        }
+        return m;
+      }));
+    };
+
     socket.on('online_users', handleOnlineUsers);
     socket.on('new_message', handleNewMessage);
+    socket.on('message_deleted', handleMessageDeleted);
 
     if (activeConv) {
       socket.emit('join_room', activeConv.id || activeConv._id);
@@ -177,6 +194,7 @@ export default function ChatScreen() {
     return () => {
       socket.off('online_users', handleOnlineUsers);
       socket.off('new_message', handleNewMessage);
+      socket.off('message_deleted', handleMessageDeleted);
     };
   }, [myUserId, activeConv, socket]);
 
@@ -455,6 +473,79 @@ export default function ChatScreen() {
     }
   };
 
+  // ── Delete Message (long-press) ──────────────────────────────────────────
+  const handleDeleteMessage = (msg) => {
+    const isMine = String(msg.senderId) === String(myUserId);
+    if (msg.deletedForEveryone) return; // already deleted
+
+    const sentAt = new Date(msg.timestamp || msg.createdAt);
+    const now = new Date();
+    const diffMinutes = (now - sentAt) / (1000 * 60);
+    const canDeleteForEveryone = isMine && diffMinutes <= 10;
+
+    const buttons = [];
+
+    if (canDeleteForEveryone) {
+      buttons.push({
+        text: '🚫 Delete for Everyone',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const res = await fetch(`${API_BASE_URL}/api/messages/${msg._id}/for-everyone`, {
+              method: 'DELETE',
+              headers
+            });
+            const data = await res.json();
+            if (res.ok) {
+              setMessages((prev) => prev.map(m => {
+                if (String(m._id) === String(msg._id)) {
+                  return { ...m, deletedForEveryone: true, deletedByName: data.deletedByName || myName, text: null, mediaUrl: null, fileName: null };
+                }
+                return m;
+              }));
+            } else {
+              Alert.alert('Error', data.error || 'Failed to delete');
+            }
+          } catch (err) {
+            Alert.alert('Error', 'Failed to delete message');
+          }
+        }
+      });
+    }
+
+    buttons.push({
+      text: '🗑️ Delete for Me',
+      onPress: async () => {
+        try {
+          const res = await fetch(`${API_BASE_URL}/api/messages/${msg._id}/for-me`, {
+            method: 'DELETE',
+            headers
+          });
+          if (res.ok) {
+            setMessages((prev) => prev.filter(m => String(m._id) !== String(msg._id)));
+          } else {
+            const data = await res.json();
+            Alert.alert('Error', data.error || 'Failed to delete');
+          }
+        } catch (err) {
+          Alert.alert('Error', 'Failed to delete message');
+        }
+      }
+    });
+
+    buttons.push({ text: 'Cancel', style: 'cancel' });
+
+    Alert.alert(
+      'Delete Message',
+      canDeleteForEveryone
+        ? 'This message was sent less than 10 minutes ago. You can delete it for everyone.'
+        : isMine
+          ? 'You can only delete for everyone within 10 minutes of sending.'
+          : 'You can delete this message for yourself.',
+      buttons
+    );
+  };
+
   // Start Chat
   const startIndividualChat = async (otherUser) => {
     try {
@@ -553,48 +644,73 @@ export default function ChatScreen() {
     const senderName = activeConv?.participants?.find(p => String(p._id) === String(item.senderId))?.name || 'User';
     const mediaFullUrl = item.mediaUrl ? (item.mediaUrl.startsWith('http') ? item.mediaUrl : `${API_BASE_URL.replace('/api', '')}${item.mediaUrl}`) : '';
 
-    return (
-      <View style={[s.bubble, isMine ? s.bubbleMine : s.bubbleOther]}>
-        <Text style={[s.bubbleMeta, isMine ? s.bubbleMetaMine : s.bubbleMetaOther]}>
-          {isMine ? myName : senderName}
-          {'  '}
-          {item.timestamp ? new Date(item.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : ''}
-        </Text>
-        
-        {item.text ? <Text style={[s.bubbleText, isMine ? s.bubbleTextMine : {}]}>{item.text}</Text> : null}
-        
-        {item.type === 'image' && (
-          <TouchableOpacity onPress={() => Linking.openURL(mediaFullUrl)}>
-            <Image
-              source={{ uri: mediaFullUrl }}
-              style={{ width: 200, height: 150, borderRadius: 8, marginTop: 4 }}
-              resizeMode="cover"
-            />
-          </TouchableOpacity>
-        )}
-        
-        {item.type === 'video' && (
-          <TouchableOpacity onPress={() => Linking.openURL(mediaFullUrl)} style={s.videoThumbnail}>
-            <View style={s.videoPlayOverlay}>
-              <Text style={{ fontSize: 24, color: '#fff' }}>▶️</Text>
-            </View>
-            <Text style={s.videoLabel}>Play Video</Text>
-          </TouchableOpacity>
-        )}
-        
-        {item.type === 'file' && (
-          <TouchableOpacity onPress={() => Linking.openURL(mediaFullUrl)} style={s.fileCard}>
-            <Text style={{ fontSize: 20 }}>📄</Text>
-            <Text style={[s.fileText, isMine ? { color: '#fff' } : {}]} numberOfLines={1}>
-              {item.fileName || 'Download Document'}
+    // Show deleted placeholder
+    if (item.deletedForEveryone) {
+      return (
+        <View style={[s.bubble, isMine ? s.bubbleMine : s.bubbleOther, { opacity: 0.6 }]}>
+          <Text style={[s.bubbleMeta, isMine ? s.bubbleMetaMine : s.bubbleMetaOther]}>
+            {isMine ? myName : senderName}
+            {'  '}
+            {item.timestamp ? new Date(item.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : ''}
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 }}>
+            <Text style={{ fontSize: 16 }}>🚫</Text>
+            <Text style={[s.bubbleText, { fontStyle: 'italic', color: isMine ? 'rgba(255,255,255,0.8)' : colors.textMuted }]}>
+              This message was deleted{item.deletedByName ? ` by ${item.deletedByName}` : ''}
             </Text>
-          </TouchableOpacity>
-        )}
-        
-        {item.type === 'voice' && (
-          <VoicePlayer uri={mediaFullUrl} duration={item.duration} />
-        )}
-      </View>
+          </View>
+        </View>
+      );
+    }
+
+    return (
+      <TouchableOpacity
+        activeOpacity={0.8}
+        onLongPress={() => handleDeleteMessage(item)}
+        delayLongPress={400}
+      >
+        <View style={[s.bubble, isMine ? s.bubbleMine : s.bubbleOther]}>
+          <Text style={[s.bubbleMeta, isMine ? s.bubbleMetaMine : s.bubbleMetaOther]}>
+            {isMine ? myName : senderName}
+            {'  '}
+            {item.timestamp ? new Date(item.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : ''}
+          </Text>
+          
+          {item.text ? <Text style={[s.bubbleText, isMine ? s.bubbleTextMine : {}]}>{item.text}</Text> : null}
+          
+          {item.type === 'image' && (
+            <TouchableOpacity onPress={() => Linking.openURL(mediaFullUrl)}>
+              <Image
+                source={{ uri: mediaFullUrl }}
+                style={{ width: 200, height: 150, borderRadius: 8, marginTop: 4 }}
+                resizeMode="cover"
+              />
+            </TouchableOpacity>
+          )}
+          
+          {item.type === 'video' && (
+            <TouchableOpacity onPress={() => Linking.openURL(mediaFullUrl)} style={s.videoThumbnail}>
+              <View style={s.videoPlayOverlay}>
+                <Text style={{ fontSize: 24, color: '#fff' }}>▶️</Text>
+              </View>
+              <Text style={s.videoLabel}>Play Video</Text>
+            </TouchableOpacity>
+          )}
+          
+          {item.type === 'file' && (
+            <TouchableOpacity onPress={() => Linking.openURL(mediaFullUrl)} style={s.fileCard}>
+              <Text style={{ fontSize: 20 }}>📄</Text>
+              <Text style={[s.fileText, isMine ? { color: '#fff' } : {}]} numberOfLines={1}>
+                {item.fileName || 'Download Document'}
+              </Text>
+            </TouchableOpacity>
+          )}
+          
+          {item.type === 'voice' && (
+            <VoicePlayer uri={mediaFullUrl} duration={item.duration} />
+          )}
+        </View>
+      </TouchableOpacity>
     );
   };
 
@@ -716,6 +832,10 @@ export default function ChatScreen() {
               renderItem={renderMessage}
               contentContainerStyle={s.listContent}
               onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+              initialNumToRender={15}
+              maxToRenderPerBatch={10}
+              windowSize={11}
+              removeClippedSubviews={Platform.OS === 'android'}
               ListEmptyComponent={
                 <View style={s.noChat}><Text style={s.noChatText}>No messages yet. Say hello!</Text></View>
               }

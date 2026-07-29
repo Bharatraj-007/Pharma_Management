@@ -7,6 +7,7 @@ const cylinderSchema = new mongoose.Schema({
     default: "standard"
   },
   year: Number,
+  client_company: String, // Printing / Customer Company Name who ordered cylinder
   pharma_company: String,
   product_name: String,
   colors: Number,
@@ -14,7 +15,7 @@ const cylinderSchema = new mongoose.Schema({
   size_inches: Number,
   manufacture_date: Date,
   barcode: String
-});
+}, { timestamps: true });
 
 module.exports = mongoose.model("Cylinder", cylinderSchema);
 

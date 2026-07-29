@@ -67,4 +67,9 @@ const taskSchema = new mongoose.Schema({
   completedAt: Date
 }, { timestamps: true });
 
+taskSchema.index({ company: 1, status: 1 });
+taskSchema.index({ worker_name: 1 });
+taskSchema.index({ assignedTo: 1 });
+taskSchema.index({ completedAt: 1 });
+
 module.exports = mongoose.model("Task", taskSchema);

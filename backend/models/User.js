@@ -5,8 +5,10 @@ const userSchema = new mongoose.Schema({
   name: String,
   email: { type: String, unique: true },
   password: String,
-  role: String, // ceo, admin, manager, worker
-  company: String, // bharath, shree_ganaapathy, vel
+  role: String, // super_admin, ceo, admin, manager, worker
+  company: String, // primary company: bharath, shree_ganaapathy, vel (or company1, company2, company3)
+  assignedCompany: { type: String, default: "" }, // primary assigned company
+  companyAccess: [{ type: String }], // Array of authorized companies, e.g. ['bharath', 'shree_ganaapathy', 'vel'] for super_admin
   department: { type: String, default: "" },
   shiftTiming: { type: String, default: "" },
   phone: { type: String, default: "" },
@@ -52,7 +54,11 @@ const userSchema = new mongoose.Schema({
   companyLogo: { type: String, default: "" },
   companyAddress: { type: String, default: "" },
   workingDays: [{ type: String }],
-  holidays: [{ type: String }] // Array of YYYY-MM-DD date strings
+  holidays: [{ type: String }], // Array of YYYY-MM-DD date strings
+  expoPushToken: { type: String, default: "" }
 }, { timestamps: true });
+
+userSchema.index({ company: 1 });
+userSchema.index({ role: 1 });
 
 module.exports = mongoose.model("User", userSchema);

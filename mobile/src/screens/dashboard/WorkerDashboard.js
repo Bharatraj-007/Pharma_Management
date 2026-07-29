@@ -7,6 +7,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
   Modal, Alert, ScrollView,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { AuthContext } from '../../navigation/AuthContext';
 import API_BASE_URL from '../../config';
@@ -90,7 +91,7 @@ function FoilUsageSummary({ task }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function WorkerDashboard() {
-  const { session } = useContext(AuthContext);
+  const { session, signOut } = useContext(AuthContext);
   const token       = session?.token;
   const workerName  = session?.name || '';
 
@@ -107,20 +108,97 @@ export default function WorkerDashboard() {
   const [completeForms, setCompleteForms] = useState({});  // taskId → { usedKg, wasteKg, remainingKg }
   const [showComplete,  setShowComplete]  = useState({});  // taskId → bool
 
+  // Salary & Advance — fetch from real attendance endpoint
+  const [showSalary, setShowSalary] = useState(false);
+  const [salaryMonth, setSalaryMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [salaryDetails, setSalaryDetails] = useState(null);
+  const [salaryLoading, setSalaryLoading] = useState(false);
+
+  const fetchSalaryDetails = useCallback(async () => {
+    if (!token) return;
+    setSalaryLoading(true);
+    try {
+      // Derive date range from selected month
+      const [year, month] = salaryMonth.split('-');
+      const from = `${year}-${month}-01`;
+      const lastDay = new Date(Number(year), Number(month), 0).getDate();
+      const to = `${year}-${month}-${String(lastDay).padStart(2,'0')}`;
+
+      const res = await fetch(
+        `${API_BASE_URL}/attendance?from=${from}&to=${to}`,
+        { headers: { Authorization: token } }
+      );
+      if (!res.ok) throw new Error('Failed to load salary data');
+      const records = await res.json();
+
+      // Calculate summary from attendance records
+      const present   = records.filter(r => r.status === 'present' || r.status === 'late').length;
+      const absent    = records.filter(r => r.status === 'absent').length;
+      const halfDay   = records.filter(r => r.status === 'half-day').length;
+      const totalHrs  = records.reduce((s, r) => s + (r.hoursWorked || 0), 0);
+      const totalOT   = records.reduce((s, r) => s + (r.overtime || 0), 0);
+      const totalPay  = records.reduce((s, r) => s + (r.earnings || 0), 0);
+
+      setSalaryDetails({ present, absent, halfDay, totalHrs, totalOT, totalPay, records });
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSalaryLoading(false);
+    }
+  }, [token, salaryMonth]);
+
+  useEffect(() => {
+    if (showSalary) fetchSalaryDetails();
+  }, [showSalary, salaryMonth, fetchSalaryDetails]);
+
   // ── Load tasks ──────────────────────────────────────────────────────────────
   const loadTasks = useCallback(async () => {
     setLoading(true);
     try {
+      console.log('🔍 Attempting to fetch tasks from:', `${API_BASE_URL}/tasks`);
       const res  = await fetch(`${API_BASE_URL}/tasks`, { headers: { Authorization: token } });
+      console.log('📡 Response status:', res.status);
+
+      if (!res.ok) {
+        let errorMsg = `HTTP Error ${res.status}`;
+        try {
+          const errData = await res.json();
+          errorMsg = errData.error || errData.message || errorMsg;
+        } catch {
+          const text = await res.text().catch(() => '');
+          if (text) errorMsg = text;
+        }
+
+        if (res.status === 401 || res.status === 403) {
+          console.warn('🔒 Auth token missing or expired:', errorMsg);
+          setTasks([]);
+          await signOut();
+          return;
+        }
+        throw new Error(errorMsg);
+      }
+
       const data = await res.json();
       const all  = Array.isArray(data) ? data : [];
       setTasks(workerName ? all.filter((t) => t.worker_name === workerName) : all);
+      console.log('✅ Tasks loaded:', all.length);
     } catch (err) {
-      console.error(err);
+      console.error('❌ Load tasks error:', err);
+      console.error('❌ Error details:', {
+        message: err.message,
+        name: err.name,
+        stack: err.stack,
+        url: `${API_BASE_URL}/tasks`
+      });
+      Alert.alert(
+        'Connection Error',
+        `Cannot reach backend at ${API_BASE_URL}\n\nError: ${err.message}\n\nMake sure:\n1. Phone & laptop are on same Wi-Fi\n2. Backend is running on laptop\n3. No firewall blocking port 5001`,
+        [{ text: 'OK' }]
+      );
     } finally {
       setLoading(false);
     }
-  }, [token, workerName]);
+  }, [token, workerName, signOut]);
 
   useEffect(() => { loadTasks(); }, [loadTasks]);
 
@@ -244,8 +322,112 @@ export default function WorkerDashboard() {
   return (
     <ScreenWrapper refreshing={loading} onRefresh={loadTasks}>
       <View style={styles.header}>
-        <Text style={styles.title}>👷 Worker Dashboard</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text style={styles.title}>👷 Worker Dashboard</Text>
+          <TouchableOpacity
+            style={{
+              backgroundColor: colors.primary,
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              borderRadius: 6,
+            }}
+            onPress={async () => {
+              const { testBackendConnection, formatTestResults } = require('../../utils/networkTest');
+              const tests = await testBackendConnection();
+              const { allSuccess, message } = formatTestResults(tests);
+              Alert.alert(
+                allSuccess ? '✅ Connection OK' : '❌ Connection Failed',
+                message,
+                [{ text: 'OK' }]
+              );
+            }}
+          >
+            <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>Test Network</Text>
+          </TouchableOpacity>
+        </View>
       </View>
+
+      {/* 💰 My Monthly Salary Card */}
+      <Card style={{ marginBottom: spacing[3], backgroundColor: colors.surfaceAlt }}>
+        <TouchableOpacity
+          style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 }}
+          onPress={() => setShowSalary(!showSalary)}
+        >
+          <Text style={{ fontSize: fontSize.md, fontWeight: '700', color: colors.primary }}>
+            💰 My Monthly Salary
+          </Text>
+          <Text style={{ fontSize: fontSize.md, color: colors.primary }}>
+            {showSalary ? '▲ Hide' : '▼ Show'}
+          </Text>
+        </TouchableOpacity>
+
+        {showSalary && (
+          <View style={{ marginTop: spacing[3] }}>
+            {/* Month selector */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[3] }}>
+              <Text style={{ fontWeight: '600', color: colors.text }}>Month:</Text>
+              <TextInput
+                style={{
+                  borderWidth: 1, borderColor: colors.border, borderRadius: 6,
+                  paddingHorizontal: 8, paddingVertical: 4, width: 120,
+                  textAlign: 'center', color: colors.text, backgroundColor: '#fff',
+                }}
+                value={salaryMonth}
+                onChangeText={setSalaryMonth}
+                placeholder="YYYY-MM"
+              />
+            </View>
+
+            {salaryLoading ? (
+              <Spinner />
+            ) : salaryDetails ? (
+              <View>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2], marginBottom: spacing[3] }}>
+                  {[
+                    { label: 'Present Days',  value: salaryDetails.present,              color: colors.success },
+                    { label: 'Absent Days',   value: salaryDetails.absent,               color: colors.danger  },
+                    { label: 'Half Days',     value: salaryDetails.halfDay,              color: colors.warning },
+                    { label: 'Total Hours',   value: `${salaryDetails.totalHrs.toFixed(1)}h`, color: colors.primary },
+                    { label: 'Overtime',      value: `${salaryDetails.totalOT.toFixed(1)}h`, color: colors.accent  },
+                  ].map((item) => (
+                    <View key={item.label} style={{
+                      flex: 1, minWidth: '45%', backgroundColor: '#fff',
+                      padding: 8, borderRadius: 6, borderWidth: 1, borderColor: colors.border,
+                    }}>
+                      <Text style={{ fontSize: 10, color: colors.textMuted }}>{item.label}</Text>
+                      <Text style={{ fontSize: fontSize.sm, fontWeight: '700', color: item.color }}>
+                        {item.value}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+
+                {/* Net pay */}
+                <View style={{
+                  backgroundColor: colors.primary, padding: spacing[3],
+                  borderRadius: 8, alignItems: 'center', marginBottom: spacing[2],
+                }}>
+                  <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 10, fontWeight: '700', textTransform: 'uppercase' }}>
+                    Estimated Earnings
+                  </Text>
+                  <Text style={{ color: '#fff', fontSize: 24, fontWeight: '800', marginVertical: 4 }}>
+                    ₹{salaryDetails.totalPay.toFixed(0)}
+                  </Text>
+                  <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11 }}>
+                    Based on {salaryDetails.records.length} attendance records
+                  </Text>
+                </View>
+
+                <Btn label="Refresh" onPress={fetchSalaryDetails} variant="secondary" size="sm" />
+              </View>
+            ) : (
+              <Text style={{ color: colors.textMuted, fontSize: fontSize.sm, textAlign: 'center' }}>
+                No attendance records for this month.
+              </Text>
+            )}
+          </View>
+        )}
+      </Card>
 
       <QRScannerModal
         visible={scanVisible}
