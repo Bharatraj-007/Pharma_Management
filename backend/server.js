@@ -592,15 +592,28 @@ function isStrongPassword(password) {
   return regex.test(password);
 }
 
-// MOCK TRANSPORTER (console.log OTP - provide SMTP for real email)
-const transporter = {
-  sendMail: async ({ to, subject, text }) => {
-    const otp = text.match(/(\d{6})/)[1];
-    console.log(`📧 MOCK EMAIL to ${to}: ${text}`);
-    console.log(`Use OTP: ${otp}`);
-    return true;
-  }
-};
+const nodemailer = require("nodemailer");
+
+// 📧 REAL EMAIL TRANSPORTER (Nodemailer Gmail SMTP with console fallback)
+let transporter;
+if (process.env.SMTP_EMAIL && (process.env.SMTP_PASSWORD || process.env.SMTP_PASS)) {
+  transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: process.env.SMTP_EMAIL,
+      pass: process.env.SMTP_PASSWORD || process.env.SMTP_PASS
+    }
+  });
+  console.log(`📧 Real Nodemailer SMTP Email Transporter initialized for: ${process.env.SMTP_EMAIL}`);
+} else {
+  transporter = {
+    sendMail: async ({ to, subject, text }) => {
+      console.log(`📧 [MOCK EMAIL LOG] To: ${to} | Subject: ${subject} | Message: ${text}`);
+      return true;
+    }
+  };
+  console.log("ℹ️ Console OTP logger active. Set SMTP_EMAIL & SMTP_PASSWORD in Render for live Gmail OTP delivery.");
+}
 
 // 🔐 TOKEN VERIFY
 const verifyToken = (req, res, next) => {
