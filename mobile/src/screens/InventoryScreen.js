@@ -1,6 +1,6 @@
 /**
- * InventoryScreen — Foil + Cylinder stock management.
- * QR label display replaced with text-based label (printing not available on mobile).
+ * InventoryScreen — Foil + Cylinder stock management + Stock Logs.
+ * Now matches website: foil-type filter, cylinder colour-count filter, stock logs tab.
  */
 import React, { useEffect, useState, useCallback, useContext } from 'react';
 import {
@@ -30,6 +30,13 @@ const COMPANY_CONFIG = {
   },
   vel: { hasMaterial: false, materialLabel: 'Foil', materialOptions: [] },
 };
+
+const CYL_COLOUR_FILTERS = [
+  { value: 'all',       label: 'All' },
+  { value: 'one-four',  label: '1–4 Colours' },
+  { value: 'five-eight',label: '5–8 Colours' },
+  { value: 'nine-plus', label: '9+ Colours' },
+];
 
 function ChipRow({ label, options, value, onChange }) {
   return (
@@ -70,6 +77,7 @@ export default function InventoryScreen() {
   const TABS = [
     ...(cfg.hasMaterial ? [{ key:'foil', label:`📦 ${cfg.materialLabel} Stock` }] : []),
     { key:'cylinder', label:'🔷 Cylinder Stock' },
+    { key:'logs', label:'📋 Stock Logs' },
   ];
   const [activeTab, setActiveTab] = useState(TABS[0].key);
 
@@ -79,13 +87,7 @@ export default function InventoryScreen() {
   const [foilSize,  setFoilSize]  = useState('');
   const [foilWeight,setFoilWeight]= useState('');
   const [foilLoading, setFoilLoading] = useState(false);
-
-  const getTodayDateStr = () => new Date().toISOString().split('T')[0];
-  const getYesterdayDateStr = () => {
-    const d = new Date();
-    d.setDate(d.getDate() - 1);
-    return d.toISOString().split('T')[0];
-  };
+  const [foilFilter, setFoilFilter] = useState('all');
 
   // Cylinder state
   const [cylinders,   setCylinders]   = useState([]);
@@ -96,6 +98,12 @@ export default function InventoryScreen() {
   const [cylMfr,      setCylMfr]      = useState(company === 'vel' ? 'Vel Gravure' : '');
   const [cylDate,     setCylDate]     = useState('');
   const [cylLoading,  setCylLoading]  = useState(false);
+  const [cylFilter,   setCylFilter]   = useState('all');
+
+  // Stock Logs state
+  const [stockLogs,   setStockLogs]   = useState([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [logsError,   setLogsError]   = useState('');
 
   // Shared
   const [stockLoading, setStockLoading] = useState(false);
@@ -119,13 +127,12 @@ export default function InventoryScreen() {
 
   // Calendar picker state
   const [showCalendarModal, setShowCalendarModal] = useState(false);
-  const [calendarTarget, setCalendarTarget] = useState('add'); // 'add' or 'edit'
+  const [calendarTarget, setCalendarTarget] = useState('add');
   const [viewDate, setViewDate] = useState(new Date());
 
-  const monthNames = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-  ];
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  const getTodayDateStr = () => new Date().toISOString().split('T')[0];
 
   const getCalendarDays = () => {
     const year = viewDate.getFullYear();
@@ -144,11 +151,8 @@ export default function InventoryScreen() {
     const m = String(viewDate.getMonth() + 1).padStart(2, '0');
     const d = String(dayNum).padStart(2, '0');
     const dateStr = `${y}-${m}-${d}`;
-    if (calendarTarget === 'edit') {
-      setCylEditDate(dateStr);
-    } else {
-      setCylDate(dateStr);
-    }
+    if (calendarTarget === 'edit') setCylEditDate(dateStr);
+    else setCylDate(dateStr);
     setShowCalendarModal(false);
   };
 
@@ -162,27 +166,52 @@ export default function InventoryScreen() {
 
   const authHeaders = { 'Content-Type':'application/json', Authorization: token };
 
+  const activeCo = session?.activeCompany || 'all';
+  const coQuery = role === 'ceo' && activeCo ? `?company=${activeCo}` : '';
+
   const fetchStock = useCallback(async () => {
     if (!isAuthorized) return;
     setStockLoading(true); setStockError('');
     try {
       const [fr, cr] = await Promise.all([
-        fetch(`${API_BASE_URL}/foils`,    { headers:{ Authorization:token } }),
-        fetch(`${API_BASE_URL}/cylinders`,{ headers:{ Authorization:token } }),
+        fetch(`${API_BASE_URL}/foils${coQuery}`,    { headers:{ Authorization:token } }),
+        fetch(`${API_BASE_URL}/cylinders${coQuery}`,{ headers:{ Authorization:token } }),
       ]);
-      if (!fr.ok || !cr.ok) throw new Error('Unable to load stock list');
+      if (fr.status === 401 || cr.status === 401) {
+        throw new Error('Session expired. Please Sign Out and log in again.');
+      }
+      if (fr.status === 403 || cr.status === 403) {
+        throw new Error('Access denied: Stock list requires Manager, Admin, or CEO role.');
+      }
+      if (!fr.ok || !cr.ok) throw new Error('Unable to load stock list from backend server.');
       const [fd, cd] = await Promise.all([fr.json(), cr.json()]);
       setFoils(Array.isArray(fd) ? fd : []);
       setCylinders(Array.isArray(cd) ? cd : []);
     } catch (err) { setStockError(err.message); }
     finally { setStockLoading(false); }
+  }, [token, isAuthorized, coQuery]);
+
+  const fetchStockLogs = useCallback(async () => {
+    if (!isAuthorized) return;
+    setLogsLoading(true); setLogsError('');
+    try {
+      const res = await fetch(`${API_BASE_URL}/stock-logs`, { headers: { Authorization: token } });
+      if (!res.ok) throw new Error('Unable to load stock logs');
+      const data = await res.json();
+      setStockLogs(Array.isArray(data) ? data : []);
+    } catch (err) { setLogsError(err.message); }
+    finally { setLogsLoading(false); }
   }, [token, isAuthorized]);
 
   useEffect(() => { fetchStock(); }, [fetchStock]);
 
+  useEffect(() => {
+    if (activeTab === 'logs') fetchStockLogs();
+  }, [activeTab, fetchStockLogs]);
+
   const flash = (msg) => { setSuccess(msg); setTimeout(() => setSuccess(''), 3000); };
 
-  // ── Add foil ─────────────────────────────────────────────────────────────
+  // ── Add foil ──────────────────────────────────────────────────────────────
   const addFoil = async () => {
     if (!foilType || !foilSize || !foilWeight) { Alert.alert('Error', 'Please fill all foil fields.'); return; }
     setFoilLoading(true);
@@ -192,7 +221,7 @@ export default function InventoryScreen() {
         body: JSON.stringify({ type:foilType, size:foilSize, weight:Number(foilWeight) }),
       });
       const data = await res.json().catch(()=>({}));
-      if (!res.ok) throw new Error(data.error || await res.text().catch(()=>'') || 'Failed');
+      if (!res.ok) throw new Error(data.error || 'Failed');
       flash(`✅ ${cfg.materialLabel} added! QR: ${data.qrPayload || data.foil?.qrPayload || ''}`);
       setFoilSize(''); setFoilWeight('');
       fetchStock();
@@ -200,7 +229,7 @@ export default function InventoryScreen() {
     finally { setFoilLoading(false); }
   };
 
-  // ── Print foil label (QR-only label, not the whole page) ──────────────────
+  // ── Print foil label ──────────────────────────────────────────────────────
   const handlePrint = async (foil) => {
     try {
       const printUrl = `${API_BASE_URL}/qrs/foil/${encodeURIComponent(foil.qrPayload)}/print`;
@@ -208,19 +237,16 @@ export default function InventoryScreen() {
       if (!resp.ok) throw new Error('Failed to load print label');
       const html = await resp.text();
       await Print.printAsync({ html });
-    } catch (err) {
-      Alert.alert('Printing Failed', err.message);
-    }
+    } catch (err) { Alert.alert('Printing Failed', err.message); }
   };
 
-  // ── Save Foil Edit ───────────────────────────────────────────────────────
+  // ── Save Foil Edit ────────────────────────────────────────────────────────
   const saveFoilEdit = async () => {
     if (!editingFoil) return;
     if (!foilEditType || !foilEditSize || !foilEditWeight) { Alert.alert('Error', 'Please fill all fields.'); return; }
     try {
       const res = await fetch(`${API_BASE_URL}/foils/${editingFoil._id}`, {
-        method: 'PUT',
-        headers: authHeaders,
+        method: 'PUT', headers: authHeaders,
         body: JSON.stringify({ type: foilEditType, size: foilEditSize, weight: Number(foilEditWeight) }),
       });
       const data = await res.json().catch(()=>({}));
@@ -231,7 +257,7 @@ export default function InventoryScreen() {
     } catch (err) { Alert.alert('Error', err.message); }
   };
 
-  // ── Save cylinder edit ───────────────────────────────────────────────────
+  // ── Save cylinder edit ────────────────────────────────────────────────────
   const saveCylinderEdit = async () => {
     if (!editingCyl) return;
     if (!cylEditProduct || !cylEditColors || !cylEditSize || !cylEditMfr || !cylEditDate) {
@@ -239,8 +265,7 @@ export default function InventoryScreen() {
     }
     try {
       const res = await fetch(`${API_BASE_URL}/cylinders/${editingCyl._id}`, {
-        method: 'PUT',
-        headers: authHeaders,
+        method: 'PUT', headers: authHeaders,
         body: JSON.stringify({
           client_company: cylEditClient,
           product_name: cylEditProduct,
@@ -254,7 +279,6 @@ export default function InventoryScreen() {
       if (!res.ok) throw new Error(data.error || 'Failed to update');
       flash('Cylinder updated successfully.');
       setEditingCyl(null);
-      setCylEditClient(''); setCylEditProduct(''); setCylEditColors(''); setCylEditSize(''); setCylEditMfr(''); setCylEditDate('');
       fetchStock();
     } catch (err) { Alert.alert('Error', err.message); }
   };
@@ -315,12 +339,23 @@ export default function InventoryScreen() {
   };
 
   const norm = (v) => String(v||'').toLowerCase();
-  const filteredFoils = foils.filter((f) =>
-    [f.type, f.size, f.weight, f.qrPayload].map(norm).join(' ').includes(norm(search))
-  );
-  const filteredCylinders = cylinders.filter((c) =>
-    [c.product_name, c.colors, c.size_inches, c.manufacturer, c.barcode].map(norm).join(' ').includes(norm(search))
-  );
+
+  // Filter foils
+  const filteredFoils = foils.filter((f) => {
+    const matchesFilter = foilFilter === 'all' || f.type === foilFilter;
+    return matchesFilter && [f.type, f.size, f.weight, f.qrPayload].map(norm).join(' ').includes(norm(search));
+  });
+
+  // Filter cylinders
+  const filteredCylinders = cylinders.filter((c) => {
+    const n = Number(c.colors);
+    const matchesFilter =
+      cylFilter === 'all' ? true :
+      cylFilter === 'one-four'   ? (n >= 1 && n <= 4) :
+      cylFilter === 'five-eight' ? (n >= 5 && n <= 8) :
+      cylFilter === 'nine-plus'  ? (n >= 9) : true;
+    return matchesFilter && [c.product_name, c.colors, c.size_inches, c.manufacturer, c.barcode].map(norm).join(' ').includes(norm(search));
+  });
 
   if (!isAuthorized) {
     return (
@@ -345,12 +380,6 @@ export default function InventoryScreen() {
 
       <TabBar tabs={TABS} active={activeTab} onChange={setActiveTab} />
 
-      <Input
-        placeholder={`Search ${activeTab === 'foil' ? cfg.materialLabel.toLowerCase() : 'cylinder'}…`}
-        value={search} onChangeText={setSearch}
-        style={{ marginBottom: spacing[3] }}
-      />
-
       {/* ── FOIL TAB ── */}
       {activeTab === 'foil' && cfg.hasMaterial && (
         <>
@@ -372,6 +401,18 @@ export default function InventoryScreen() {
               <Btn label="Refresh" onPress={fetchStock} variant="primary" size="sm" />
             </CardHeader>
 
+            {/* Filter chips */}
+            <ChipRow
+              label="Filter by Type"
+              options={[{ value:'all', label:'All' }, ...cfg.materialOptions]}
+              value={foilFilter} onChange={setFoilFilter}
+            />
+            <Input
+              placeholder={`Search ${cfg.materialLabel.toLowerCase()}…`}
+              value={search} onChangeText={setSearch}
+              style={{ marginBottom: spacing[3] }}
+            />
+
             {stockLoading ? <Spinner /> : filteredFoils.length === 0 ? (
               <EmptyState message={`No ${cfg.materialLabel.toLowerCase()} stock found.`} />
             ) : (
@@ -382,7 +423,7 @@ export default function InventoryScreen() {
                     <Text style={s.stockSub}>{foil.weight} KG</Text>
                     {foil.qrPayload && (
                       <>
-                        <Text style={[s.stockSub, { color:colors.primary, fontSize:fontSize.xs, marginBottom: 4 }]} numberOfLines={1}>
+                        <Text style={[s.stockSub, { color:colors.primary, fontSize:fontSize.xs }]} numberOfLines={1}>
                           QR: {foil.qrPayload}
                         </Text>
                         <Image
@@ -395,15 +436,15 @@ export default function InventoryScreen() {
                   </View>
                   <View style={{ alignItems: 'flex-end', gap: 6 }}>
                     <View style={{ flexDirection: 'row', gap: 4 }}>
-                      <Btn label="🖨️ Print" size="sm" variant="primary" onPress={() => handlePrint(foil)} style={{ minWidth: 60 }} />
+                      <Btn label="🖨️" size="sm" variant="primary" onPress={() => handlePrint(foil)} />
                       <Btn label="Edit" size="sm" variant="warning" onPress={() => {
                         setEditingFoil(foil);
                         setFoilEditType(foil.type);
                         setFoilEditSize(foil.size);
                         setFoilEditWeight(String(foil.weight));
-                      }} style={{ minWidth: 60 }} />
+                      }} />
                     </View>
-                    <Btn label="Delete" size="sm" variant="danger" onPress={() => deleteFoil(foil)} style={{ width: 124 }} />
+                    <Btn label="Delete" size="sm" variant="danger" onPress={() => deleteFoil(foil)} style={{ width: 110 }} />
                   </View>
                 </View>
               ))
@@ -417,40 +458,21 @@ export default function InventoryScreen() {
         <>
           <Card style={{ marginBottom: spacing[4] }}>
             <CardTitle>➕ Add Cylinder Stock</CardTitle>
-            <Input label={company === 'vel' ? 'Printing / Client Company Name *' : 'Client Company Name'} value={cylClient} onChangeText={setCylClient} placeholder="e.g. Bharath Enterprises" />
+            <Input label={company === 'vel' ? 'Printing / Client Company *' : 'Client Company'} value={cylClient} onChangeText={setCylClient} placeholder="e.g. Bharath Enterprises" />
             <Input label="Product Name *"    value={cylProduct} onChangeText={setCylProduct} placeholder="e.g. Aspirin Blister" />
             <Input label="Number of Colors *" value={cylColors}  onChangeText={setCylColors}  placeholder="e.g. 4" keyboardType="numeric" />
             <Input label="Cylinder Size (inches) *" value={cylSize} onChangeText={setCylSize} placeholder="e.g. 10" keyboardType="numeric" />
             <Input label="Manufacturer *"    value={cylMfr}     onChangeText={setCylMfr}     placeholder="e.g. Vel Gravure" />
-            <Text style={{ fontSize: fontSize.sm, fontWeight: '600', color: colors.text, marginBottom: spacing[1] }}>
-              Manufacture Date *
-            </Text>
+            <Text style={{ fontSize: fontSize.sm, fontWeight: '600', color: colors.text, marginBottom: spacing[1] }}>Manufacture Date *</Text>
             <TouchableOpacity
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justify: 'space-between',
-                paddingHorizontal: spacing[4],
-                paddingVertical: spacing[3],
-                backgroundColor: '#f8fafc',
-                borderRadius: 8,
-                borderWidth: 1.5,
-                borderColor: colors.primary,
-                marginBottom: spacing[3],
-              }}
-              onPress={() => {
-                setCalendarTarget('add');
-                setViewDate(new Date());
-                setShowCalendarModal(true);
-              }}
+              style={{ flexDirection:'row', alignItems:'center', paddingHorizontal:spacing[4], paddingVertical:spacing[3], backgroundColor:'#f8fafc', borderRadius:8, borderWidth:1.5, borderColor:colors.primary, marginBottom:spacing[3] }}
+              onPress={() => { setCalendarTarget('add'); setViewDate(new Date()); setShowCalendarModal(true); }}
             >
-              <Text style={{ fontSize: fontSize.base, fontWeight: '700', color: cylDate ? colors.text : colors.textMuted }}>
+              <Text style={{ fontSize:fontSize.base, fontWeight:'700', color: cylDate ? colors.text : colors.textMuted, flex:1 }}>
                 📅 {cylDate ? cylDate : 'Select Manufacture Date'}
               </Text>
-              <View style={{ backgroundColor: colors.primary, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6 }}>
-                <Text style={{ fontSize: fontSize.xs, fontWeight: '700', color: '#fff' }}>
-                  CALENDAR 🗓️
-                </Text>
+              <View style={{ backgroundColor:colors.primary, paddingHorizontal:10, paddingVertical:5, borderRadius:6 }}>
+                <Text style={{ fontSize:fontSize.xs, fontWeight:'700', color:'#fff' }}>CALENDAR 🗓️</Text>
               </View>
             </TouchableOpacity>
             <Btn label={cylLoading ? '⏳ Adding…' : '➕ Add Cylinder'} onPress={addCylinder} loading={cylLoading} variant="success" block size="lg" />
@@ -462,6 +484,18 @@ export default function InventoryScreen() {
               <Btn label="Refresh" onPress={fetchStock} variant="primary" size="sm" />
             </CardHeader>
 
+            {/* Colour-count filter */}
+            <ChipRow
+              label="Filter by Colours"
+              options={CYL_COLOUR_FILTERS}
+              value={cylFilter} onChange={setCylFilter}
+            />
+            <Input
+              placeholder="Search cylinders…"
+              value={search} onChangeText={setSearch}
+              style={{ marginBottom: spacing[3] }}
+            />
+
             {stockLoading ? <Spinner /> : filteredCylinders.length === 0 ? (
               <EmptyState message="No cylinder stock found." />
             ) : (
@@ -470,11 +504,9 @@ export default function InventoryScreen() {
                   <View style={{ flex:1 }}>
                     <Text style={s.stockName}>{cyl.client_company || cyl.company || 'Printing Client'} — {cyl.product_name}</Text>
                     <Text style={s.stockSub}>{cyl.colors} colours · Size: {cyl.size_inches}" · Mfr: {cyl.manufacturer}</Text>
-                    <Text style={[s.stockSub, { fontSize:fontSize.xs, color:colors.primary }]}>
-                      Barcode: {cyl.barcode}
-                    </Text>
+                    <Text style={[s.stockSub, { fontSize:fontSize.xs, color:colors.primary }]}>Barcode: {cyl.barcode}</Text>
                   </View>
-                  <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                  <View style={{ flexDirection:'row', gap:6, alignItems:'center' }}>
                     <Btn label="Edit" size="sm" variant="warning" onPress={() => {
                       setEditingCyl(cyl);
                       setCylEditClient(cyl.client_company || '');
@@ -492,6 +524,33 @@ export default function InventoryScreen() {
           </Card>
         </>
       )}
+
+      {/* ── STOCK LOGS TAB ── */}
+      {activeTab === 'logs' && (
+        <Card>
+          <CardHeader>
+            <CardTitle style={{ marginBottom:0 }}>📋 Stock Change Logs</CardTitle>
+            <Btn label="Refresh" onPress={fetchStockLogs} variant="primary" size="sm" />
+          </CardHeader>
+          <AlertBanner type="danger" message={logsError} />
+          {logsLoading ? <Spinner /> : stockLogs.length === 0 ? (
+            <EmptyState message="No stock change logs found." />
+          ) : (
+            stockLogs.map((log, idx) => (
+              <View key={log._id || idx} style={s.stockRow}>
+                <View style={{ flex:1 }}>
+                  <Text style={s.stockName}>{log.action || log.type} — {log.item || log.itemType}</Text>
+                  <Text style={s.stockSub}>{log.details || log.description || '—'}</Text>
+                  <Text style={[s.stockSub, { fontSize:fontSize.xs, color:colors.primary }]}>
+                    By: {log.changedBy || log.user || '—'} · {log.createdAt ? new Date(log.createdAt).toLocaleString() : ''}
+                  </Text>
+                </View>
+              </View>
+            ))
+          )}
+        </Card>
+      )}
+
       {/* ── Edit Foil Modal ── */}
       <Modal visible={!!editingFoil} animationType="fade" transparent onRequestClose={() => setEditingFoil(null)}>
         <View style={s.modalOverlay}>
@@ -504,9 +563,9 @@ export default function InventoryScreen() {
             />
             <Input label="Size *" value={foilEditSize} onChangeText={setFoilEditSize} placeholder="e.g. 10cm" />
             <Input label="Weight (KG) *" value={foilEditWeight} onChangeText={setFoilEditWeight} placeholder="e.g. 25" keyboardType="numeric" />
-            <View style={{ flexDirection: 'row', gap: spacing[3], marginTop: spacing[2] }}>
-              <Btn label="Save" onPress={saveFoilEdit} variant="success" style={{ flex: 1 }} size="lg" />
-              <Btn label="Cancel" onPress={() => setEditingFoil(null)} variant="secondary" style={{ flex: 1 }} size="lg" />
+            <View style={{ flexDirection:'row', gap:spacing[3], marginTop:spacing[2] }}>
+              <Btn label="Save" onPress={saveFoilEdit} variant="success" style={{ flex:1 }} size="lg" />
+              <Btn label="Cancel" onPress={() => setEditingFoil(null)} variant="secondary" style={{ flex:1 }} size="lg" />
             </View>
           </Card>
         </View>
@@ -522,103 +581,69 @@ export default function InventoryScreen() {
             <Input label="Number of Colors *" value={cylEditColors} onChangeText={setCylEditColors} placeholder="e.g. 4" keyboardType="numeric" />
             <Input label="Cylinder Size (inches) *" value={cylEditSize} onChangeText={setCylEditSize} placeholder="e.g. 10" keyboardType="numeric" />
             <Input label="Manufacturer *" value={cylEditMfr} onChangeText={setCylEditMfr} placeholder="e.g. Vel Gravure" />
-            <Text style={{ fontSize: fontSize.sm, fontWeight: '600', color: colors.text, marginBottom: spacing[1], marginTop: spacing[2] }}>
-              Manufacture Date *
-            </Text>
+            <Text style={{ fontSize:fontSize.sm, fontWeight:'600', color:colors.text, marginBottom:spacing[1], marginTop:spacing[2] }}>Manufacture Date *</Text>
             <TouchableOpacity
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justify: 'space-between',
-                paddingHorizontal: spacing[4],
-                paddingVertical: spacing[3],
-                backgroundColor: '#f8fafc',
-                borderRadius: 8,
-                borderWidth: 1.5,
-                borderColor: colors.primary,
-                marginBottom: spacing[3],
-              }}
+              style={{ flexDirection:'row', alignItems:'center', paddingHorizontal:spacing[4], paddingVertical:spacing[3], backgroundColor:'#f8fafc', borderRadius:8, borderWidth:1.5, borderColor:colors.primary, marginBottom:spacing[3] }}
               onPress={() => {
                 setCalendarTarget('edit');
-                if (cylEditDate) {
-                  const parsed = new Date(cylEditDate);
-                  if (!isNaN(parsed.getTime())) setViewDate(parsed);
-                } else {
-                  setViewDate(new Date());
-                }
+                if (cylEditDate) { const p = new Date(cylEditDate); if (!isNaN(p.getTime())) setViewDate(p); } else setViewDate(new Date());
                 setShowCalendarModal(true);
               }}
             >
-              <Text style={{ fontSize: fontSize.base, fontWeight: '700', color: cylEditDate ? colors.text : colors.textMuted }}>
+              <Text style={{ fontSize:fontSize.base, fontWeight:'700', color: cylEditDate ? colors.text : colors.textMuted, flex:1 }}>
                 📅 {cylEditDate ? cylEditDate : 'Select Manufacture Date'}
               </Text>
-              <View style={{ backgroundColor: colors.primary, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6 }}>
-                <Text style={{ fontSize: fontSize.xs, fontWeight: '700', color: '#fff' }}>
-                  CALENDAR 🗓️
-                </Text>
+              <View style={{ backgroundColor:colors.primary, paddingHorizontal:10, paddingVertical:5, borderRadius:6 }}>
+                <Text style={{ fontSize:fontSize.xs, fontWeight:'700', color:'#fff' }}>CALENDAR 🗓️</Text>
               </View>
             </TouchableOpacity>
-            <View style={{ flexDirection: 'row', gap: spacing[3], marginTop: spacing[2] }}>
-              <Btn label="Save" onPress={saveCylinderEdit} variant="success" style={{ flex: 1 }} size="lg" />
-              <Btn label="Cancel" onPress={() => setEditingCyl(null)} variant="secondary" style={{ flex: 1 }} size="lg" />
+            <View style={{ flexDirection:'row', gap:spacing[3], marginTop:spacing[2] }}>
+              <Btn label="Save" onPress={saveCylinderEdit} variant="success" style={{ flex:1 }} size="lg" />
+              <Btn label="Cancel" onPress={() => setEditingCyl(null)} variant="secondary" style={{ flex:1 }} size="lg" />
             </View>
           </Card>
         </View>
       </Modal>
 
-      {/* ── Visual Calendar Date Picker Modal ── */}
+      {/* ── Calendar Modal ── */}
       <Modal visible={showCalendarModal} animationType="fade" transparent onRequestClose={() => setShowCalendarModal(false)}>
         <View style={s.modalOverlay}>
           <Card style={s.modalCard}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing[3] }}>
-              <TouchableOpacity onPress={() => changeMonth(-1)} style={{ padding: spacing[2] }}>
-                <Text style={{ fontSize: fontSize.lg, fontWeight: '700', color: colors.primary }}>◀</Text>
+            <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom:spacing[3] }}>
+              <TouchableOpacity onPress={() => changeMonth(-1)} style={{ padding:spacing[2] }}>
+                <Text style={{ fontSize:fontSize.lg, fontWeight:'700', color:colors.primary }}>◀</Text>
               </TouchableOpacity>
-              <Text style={{ fontSize: fontSize.base, fontWeight: '700', color: colors.text }}>
+              <Text style={{ fontSize:fontSize.base, fontWeight:'700', color:colors.text }}>
                 {monthNames[viewDate.getMonth()]} {viewDate.getFullYear()}
               </Text>
-              <TouchableOpacity onPress={() => changeMonth(1)} style={{ padding: spacing[2] }}>
-                <Text style={{ fontSize: fontSize.lg, fontWeight: '700', color: colors.primary }}>▶</Text>
+              <TouchableOpacity onPress={() => changeMonth(1)} style={{ padding:spacing[2] }}>
+                <Text style={{ fontSize:fontSize.lg, fontWeight:'700', color:colors.primary }}>▶</Text>
               </TouchableOpacity>
             </View>
-
-            {/* Days of week */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-around', borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: spacing[2], marginBottom: spacing[2] }}>
-              {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
-                <Text key={i} style={{ width: 36, textAlign: 'center', fontSize: fontSize.xs, fontWeight: '700', color: colors.textMuted }}>{d}</Text>
+            <View style={{ flexDirection:'row', justifyContent:'space-around', borderBottomWidth:1, borderBottomColor:colors.border, paddingBottom:spacing[2], marginBottom:spacing[2] }}>
+              {['S','M','T','W','T','F','S'].map((d, i) => (
+                <Text key={i} style={{ width:36, textAlign:'center', fontSize:fontSize.xs, fontWeight:'700', color:colors.textMuted }}>{d}</Text>
               ))}
             </View>
-
-            {/* Days grid */}
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+            <View style={{ flexDirection:'row', flexWrap:'wrap' }}>
               {getCalendarDays().map((dayNum, idx) => (
                 <TouchableOpacity
-                  key={idx}
-                  disabled={!dayNum}
-                  style={{
-                    width: '14.28%',
-                    aspectRatio: 1,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    marginVertical: 2,
-                    borderRadius: 6,
-                    backgroundColor: dayNum ? colors.surfaceAlt : 'transparent',
-                  }}
+                  key={idx} disabled={!dayNum}
+                  style={{ width:'14.28%', aspectRatio:1, alignItems:'center', justifyContent:'center', marginVertical:2, borderRadius:6, backgroundColor: dayNum ? colors.surfaceAlt : 'transparent' }}
                   onPress={() => handleSelectDay(dayNum)}
                 >
-                  {dayNum ? <Text style={{ fontWeight: '600', color: colors.text }}>{dayNum}</Text> : null}
+                  {dayNum ? <Text style={{ fontWeight:'600', color:colors.text }}>{dayNum}</Text> : null}
                 </TouchableOpacity>
               ))}
             </View>
-
-            <View style={{ flexDirection: 'row', gap: spacing[2], marginTop: spacing[4] }}>
-              <Btn label="⚡ Select Today" variant="primary" style={{ flex: 1 }} onPress={() => {
+            <View style={{ flexDirection:'row', gap:spacing[2], marginTop:spacing[4] }}>
+              <Btn label="⚡ Today" variant="primary" style={{ flex:1 }} onPress={() => {
                 const todayStr = getTodayDateStr();
                 if (calendarTarget === 'edit') setCylEditDate(todayStr);
                 else setCylDate(todayStr);
                 setShowCalendarModal(false);
               }} />
-              <Btn label="Cancel" variant="secondary" style={{ flex: 1 }} onPress={() => setShowCalendarModal(false)} />
+              <Btn label="Cancel" variant="secondary" style={{ flex:1 }} onPress={() => setShowCalendarModal(false)} />
             </View>
           </Card>
         </View>
@@ -631,17 +656,6 @@ const s = StyleSheet.create({
   stockRow:  { flexDirection:'row', alignItems:'center', justifyContent:'space-between', paddingVertical:spacing[3], borderBottomWidth:1, borderBottomColor:colors.border },
   stockName: { fontWeight:'700', color:colors.text, fontSize:fontSize.base },
   stockSub:  { fontSize:fontSize.sm, color:colors.textMuted, marginTop:2 },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    padding: spacing[4],
-  },
-  modalCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 8,
-    padding: spacing[4],
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
+  modalOverlay: { flex:1, backgroundColor:'rgba(0,0,0,0.5)', justifyContent:'center', padding:spacing[4] },
+  modalCard: { backgroundColor:colors.surface, borderRadius:8, padding:spacing[4], borderWidth:1, borderColor:colors.border },
 });

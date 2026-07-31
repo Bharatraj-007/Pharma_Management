@@ -207,6 +207,9 @@ function Attendance() {
       if (filterStatus && filterStatus !== "All") query.set("status", filterStatus);
       if (filterWorker && filterWorker !== "All") query.set("workerName", filterWorker);
 
+      const activeCo = localStorage.getItem("activeCompany") || "all";
+      if (userRole === "ceo" && activeCo) query.set("company", activeCo);
+
       const res = await fetch(`${API_BASE_URL}/attendance?${query.toString()}`, {
         headers: { Authorization: token },
       });
@@ -218,7 +221,14 @@ function Attendance() {
     } finally {
       setLoading(false);
     }
-  }, [fromDate, toDate, searchQuery, filterStatus, filterWorker]);
+  }, [fromDate, toDate, searchQuery, filterStatus, filterWorker, userRole]);
+
+  useEffect(() => {
+    fetchAttendance();
+    const handleCompanyChange = () => fetchAttendance();
+    window.addEventListener("companyChanged", handleCompanyChange);
+    return () => window.removeEventListener("companyChanged", handleCompanyChange);
+  }, [fetchAttendance]);
 
   // 3. Fetch workers list (for admin/manager/ceo dropdown)
   const fetchWorkers = useCallback(async () => {

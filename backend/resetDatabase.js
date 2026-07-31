@@ -7,6 +7,9 @@ const modelsToClear = [
   "auditlogs",
   "foils",
   "cylinders",
+  "dispatches",
+  "products",
+  "transactions",
   "attendances",
   "leaverequests",
   "advancerequests",
@@ -21,26 +24,23 @@ const modelsToClear = [
 ];
 
 const seedUsersList = [
-  // Super Admin (Cross-company access)
-  { name: "Super Admin (Owner/CEO)", email: "superadmin@system.com", role: "super_admin", company: "bharath", assignedCompany: "bharath", companyAccess: ["bharath", "shree_ganaapathy", "vel"], phone: "9999999999" },
+  // 👑 SINGLE CEO FOR ALL 3 COMPANIES
+  { name: "CEO (Owner / System Head)", email: "ceo@system.com", role: "ceo", company: "bharath", assignedCompany: "bharath", companyAccess: ["bharath", "shree_ganaapathy", "vel"], phone: "9999999999" },
 
-  // Bharath Enterprises (Company 1)
-  { name: "Admin (bharath)", email: "admin@bharath.com", role: "admin", company: "bharath", assignedCompany: "bharath", companyAccess: ["bharath"], phone: "9876543210" },
-  { name: "CEO (bharath)", email: "ceo@bharath.com", role: "super_admin", company: "bharath", assignedCompany: "bharath", companyAccess: ["bharath", "shree_ganaapathy", "vel"], phone: "9876543211" },
-  { name: "Manager (bharath)", email: "manager@bharath.com", role: "manager", company: "bharath", assignedCompany: "bharath", companyAccess: ["bharath"], phone: "9876543212" },
-  { name: "Worker (bharath)", email: "worker@bharath.com", role: "worker", company: "bharath", assignedCompany: "bharath", companyAccess: ["bharath"], phone: "9876543213" },
+  // Company 1: Bharath Enterprises
+  { name: "Admin (Bharath)", email: "admin@bharath.com", role: "admin", company: "bharath", assignedCompany: "bharath", companyAccess: ["bharath"], phone: "9876543210" },
+  { name: "Manager (Bharath)", email: "manager@bharath.com", role: "manager", company: "bharath", assignedCompany: "bharath", companyAccess: ["bharath"], phone: "9876543212" },
+  { name: "Worker (Bharath)", email: "worker@bharath.com", role: "worker", company: "bharath", assignedCompany: "bharath", companyAccess: ["bharath"], phone: "9876543213" },
 
-  // Shree Ganaapathy (Company 2)
-  { name: "Admin (shree_ganaapathy)", email: "admin@shree.com", role: "admin", company: "shree_ganaapathy", assignedCompany: "shree_ganaapathy", companyAccess: ["shree_ganaapathy"], phone: "9876543220" },
-  { name: "CEO (shree_ganaapathy)", email: "ceo@shree.com", role: "ceo", company: "shree_ganaapathy", assignedCompany: "shree_ganaapathy", companyAccess: ["shree_ganaapathy"], phone: "9876543221" },
-  { name: "Manager (shree_ganaapathy)", email: "manager@shree.com", role: "manager", company: "shree_ganaapathy", assignedCompany: "shree_ganaapathy", companyAccess: ["shree_ganaapathy"], phone: "9876543222" },
-  { name: "Worker (shree_ganaapathy)", email: "worker@shree.com", role: "worker", company: "shree_ganaapathy", assignedCompany: "shree_ganaapathy", companyAccess: ["shree_ganaapathy"], phone: "9876543223" },
+  // Company 2: Shree Ganaapathy Roto Prints
+  { name: "Admin (Shree Ganaapathy)", email: "admin@shree.com", role: "admin", company: "shree_ganaapathy", assignedCompany: "shree_ganaapathy", companyAccess: ["shree_ganaapathy"], phone: "9876543220" },
+  { name: "Manager (Shree Ganaapathy)", email: "manager@shree.com", role: "manager", company: "shree_ganaapathy", assignedCompany: "shree_ganaapathy", companyAccess: ["shree_ganaapathy"], phone: "9876543222" },
+  { name: "Worker (Shree Ganaapathy)", email: "worker@shree.com", role: "worker", company: "shree_ganaapathy", assignedCompany: "shree_ganaapathy", companyAccess: ["shree_ganaapathy"], phone: "9876543223" },
 
-  // Vel Gravure (Company 3)
-  { name: "Admin (vel)", email: "admin@vel.com", role: "admin", company: "vel", assignedCompany: "vel", companyAccess: ["vel"], phone: "9876543230" },
-  { name: "CEO (vel)", email: "ceo@vel.com", role: "ceo", company: "vel", assignedCompany: "vel", companyAccess: ["vel"], phone: "9876543231" },
-  { name: "Manager (vel)", email: "manager@vel.com", role: "manager", company: "vel", assignedCompany: "vel", companyAccess: ["vel"], phone: "9876543232" },
-  { name: "Worker (vel)", email: "worker@vel.com", role: "worker", company: "vel", phone: "9876543233" },
+  // Company 3: Vel Gravure
+  { name: "Admin (Vel Gravure)", email: "admin@vel.com", role: "admin", company: "vel", assignedCompany: "vel", companyAccess: ["vel"], phone: "9876543230" },
+  { name: "Manager (Vel Gravure)", email: "manager@vel.com", role: "manager", company: "vel", assignedCompany: "vel", companyAccess: ["vel"], phone: "9876543232" },
+  { name: "Worker (Vel Gravure)", email: "worker@vel.com", role: "worker", company: "vel", assignedCompany: "vel", companyAccess: ["vel"], phone: "9876543233" },
 ];
 
 async function wipeDatabase(uri, label) {

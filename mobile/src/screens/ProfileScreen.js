@@ -50,6 +50,76 @@ function Avatar({ name, size = 72 }) {
   );
 }
 
+// ── Add Holiday Form (Admin/CEO only) ─────────────────────────────────────────
+function AddHolidayForm({ token, company }) {
+  const [name, setName]       = useState('');
+  const [date, setDate]       = useState('');
+  const [saving, setSaving]   = useState(false);
+  const [msg,   setMsg]       = useState('');
+  const [holidays, setHolidays] = useState([]);
+
+  const headers = { 'Content-Type': 'application/json', Authorization: token };
+
+  const fetchHolidays = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/holidays?company=${company}`, { headers: { Authorization: token } });
+      if (res.ok) setHolidays(await res.json());
+    } catch {}
+  }, [token, company]);
+
+  useEffect(() => { fetchHolidays(); }, [fetchHolidays]);
+
+  const addHoliday = async () => {
+    if (!name || !date) { setMsg('Name and date are required.'); return; }
+    setSaving(true); setMsg('');
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/holidays`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ company, name, date }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to add holiday');
+      setMsg('✅ Holiday added!');
+      setName(''); setDate('');
+      fetchHolidays();
+    } catch (err) { setMsg(err.message); }
+    finally { setSaving(false); }
+  };
+
+  const deleteHoliday = async (id) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/holidays/${id}`, { method: 'DELETE', headers: { Authorization: token } });
+      if (res.ok) fetchHolidays();
+    } catch (err) { Alert.alert('Error', err.message); }
+  };
+
+  return (
+    <View>
+      <Input label="Holiday Name *" value={name} onChangeText={setName} placeholder="e.g. Diwali" />
+      <Input label="Date (YYYY-MM-DD) *" value={date} onChangeText={setDate} placeholder="e.g. 2026-10-20" />
+      {msg ? <Text style={{ fontSize: fontSize.xs, color: msg.startsWith('✅') ? '#166534' : '#991b1b', marginBottom:4 }}>{msg}</Text> : null}
+      <Btn label={saving ? '⏳ Adding...' : '➕ Add Holiday'} onPress={addHoliday} loading={saving} variant="primary" block size="md" style={{ marginBottom: spacing[3] }} />
+
+      {holidays.length > 0 && (
+        <View>
+          <Text style={{ fontWeight:'700', fontSize:fontSize.sm, color:colors.text, marginBottom:spacing[2] }}>Existing Holidays</Text>
+          {holidays.map((h) => (
+            <View key={h._id} style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', paddingVertical:spacing[2], borderBottomWidth:1, borderBottomColor:colors.border }}>
+              <View>
+                <Text style={{ fontWeight:'600', color:colors.text, fontSize:fontSize.sm }}>{h.name}</Text>
+                <Text style={{ fontSize:fontSize.xs, color:colors.textMuted }}>{h.date}</Text>
+              </View>
+              <TouchableOpacity onPress={() => deleteHoliday(h._id)} style={{ backgroundColor:'#fee2e2', padding:6, borderRadius:6 }}>
+                <Text style={{ color:'#991b1b', fontWeight:'700', fontSize:fontSize.xs }}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
 export default function ProfileScreen() {
   const { session } = useContext(AuthContext);
   const token = session?.token;
@@ -435,8 +505,15 @@ export default function ProfileScreen() {
                 <Input label="Holidays List (comma-separated YYYY-MM-DD)" value={companyForm.holidays} onChangeText={(v) => setCompanyForm(p => ({ ...p, holidays:v }))} />
                 
                 <Btn label="Save Configurations" onPress={handleCompanySave} variant="success" block size="md" style={{ marginTop: spacing[2] }} />
+
+                {/* ── Add Individual Holiday ── */}
+                <View style={{ borderTopWidth:1, borderTopColor:colors.border, paddingTop:spacing[4], marginTop:spacing[2] }}>
+                  <Text style={s.sectionHeader}>📅 Add Holiday</Text>
+                  <AddHolidayForm token={token} company={profile.assignedCompany || profile.company} />
+                </View>
               </View>
             )}
+
           </Card>
         </View>
       )}

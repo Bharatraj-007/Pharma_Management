@@ -14,7 +14,10 @@ const cylinderSchema = new mongoose.Schema({
   manufacturer: String,
   size_inches: Number,
   manufacture_date: Date,
-  barcode: String
+  barcode: String,
+  isDeleted: { type: Boolean, default: false, index: true },
+  deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+  deletedAt: { type: Date }
 }, { timestamps: true });
 
 module.exports = mongoose.model("Cylinder", cylinderSchema);

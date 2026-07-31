@@ -11,6 +11,8 @@ const DashboardRouter = lazy(() => import("./pages/DashboardRouter"));
 const Tasks = lazy(() => import("./pages/Tasks"));
 const Stock = lazy(() => import("./pages/Inventory"));
 const Dispatch = lazy(() => import("./pages/Dispatch"));
+const ProductMaster = lazy(() => import("./pages/ProductMaster"));
+const Finance = lazy(() => import("./pages/Finance"));
 const ReportsPage = lazy(() => import("./pages/ReportsPage"));
 const Attendance = lazy(() => import("./pages/Attendance"));
 const LeaveManagement = lazy(() => import("./pages/LeaveManagement"));
@@ -53,7 +55,9 @@ function App() {
           <Route path="/dashboard" element={<PrivateRoute><Layout><DashboardRouter /></Layout></PrivateRoute>} />
           <Route path="/tasks" element={<PrivateRoute><ProtectedRoute permission="tasks"><Layout><Tasks /></Layout></ProtectedRoute></PrivateRoute>} />
           <Route path="/stock" element={<PrivateRoute><ProtectedRoute permission="stock"><Layout><Stock /></Layout></ProtectedRoute></PrivateRoute>} />
+          <Route path="/products" element={<PrivateRoute><ProtectedRoute permission="products"><Layout><ProductMaster /></Layout></ProtectedRoute></PrivateRoute>} />
           <Route path="/dispatch" element={<PrivateRoute><ProtectedRoute permission="dispatch"><Layout><Dispatch /></Layout></ProtectedRoute></PrivateRoute>} />
+          <Route path="/finance" element={<PrivateRoute><ProtectedRoute permission="finance"><Layout><Finance /></Layout></ProtectedRoute></PrivateRoute>} />
           <Route path="/attendance" element={<PrivateRoute><ProtectedRoute permission="attendance"><Layout><Attendance /></Layout></ProtectedRoute></PrivateRoute>} />
           <Route path="/leave" element={<PrivateRoute><ProtectedRoute permission="leaveManagement"><Layout><LeaveManagement /></Layout></ProtectedRoute></PrivateRoute>} />
           <Route path="/reports" element={<PrivateRoute><ProtectedRoute permission="reports"><Layout><ReportsPage /></Layout></ProtectedRoute></PrivateRoute>} />

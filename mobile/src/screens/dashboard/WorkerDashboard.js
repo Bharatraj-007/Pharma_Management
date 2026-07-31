@@ -222,36 +222,201 @@ export default function WorkerDashboard() {
     scanResolvers.current = {};
   };
 
+  // ── Task start UI state ─────────────────────────────────────────────────────
+  const [taskStartForms, setTaskStartForms] = useState({});  // taskId → { mode:'scan'|'manual', qrValue:'', imageUri:null }
+  const [startScanning, setStartScanning] = useState(null);  // taskId being scanned for start
+
+  const getStartForm = (taskId) => taskStartForms[taskId] || { mode: 'scan', qrValue: '', imageUri: null };
+  const updateStartForm = (taskId, field, val) =>
+    setTaskStartForms((prev) => ({ ...prev, [taskId]: { ...(prev[taskId] || { mode: 'scan', qrValue: '', imageUri: null }), [field]: val } }));
+
+  // Start task scan - for scanning QR at start
+  const startTaskScan = (taskId) =>
+    new Promise((resolve) => {
+      scanResolvers.current = { resolve };
+      setStartScanning(taskId);
+      setScanVisible(true);
+    });
+
+  const handleStartScanned = (data) => {
+    if (startScanning) {
+      // Store the scanned value
+      updateStartForm(startScanning, 'qrValue', data);
+      setAlert(startScanning, 'success', `✅ QR scanned: ${data}`);
+      setStartScanning(null);
+    }
+    setScanVisible(false);
+    scanResolvers.current?.resolve?.(data);
+    scanResolvers.current = {};
+  };
+
+  // Pick foil image
+  const pickFoilImage = async (taskId) => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Allow gallery access to attach foil image.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.7,
+    });
+    if (!result.canceled && result.assets?.length > 0) {
+      updateStartForm(taskId, 'imageUri', result.assets[0].uri);
+      setAlert(taskId, 'success', '✅ Foil image attached');
+    }
+  };
+
+  // Take photo with camera
+  const takeFoilPhoto = async (taskId) => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Allow camera access to take foil photo.');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      quality: 0.7,
+    });
+    if (!result.canceled && result.assets?.length > 0) {
+      updateStartForm(taskId, 'imageUri', result.assets[0].uri);
+      setAlert(taskId, 'success', '✅ Foil photo captured');
+    }
+  };
+
   // ── Start task ──────────────────────────────────────────────────────────────
   const startTask = async (task) => {
     clearAlert(task._id);
     const colourCount = Number(task.colourCount || 1);
+    const startForm = getStartForm(task._id);
     const foilScans   = [];
 
-    for (let c = 1; c <= colourCount; c++) {
-      const payload = await scanForColour(task._id, c);
-      if (!payload?.trim()) {
-        setAlert(task._id, 'danger', `Foil QR is required for Colour ${c}.`);
+    // Get QR payload - either manual input or scanned
+    let qrPayload = startForm.qrValue?.trim();
+    
+    if (!qrPayload && colourCount >= 1) {
+      // If no QR value entered, try scanning
+      if (startForm.mode === 'scan') {
+        for (let c = 1; c <= colourCount; c++) {
+          qrPayload = await scanForColour(task._id, c);
+          if (!qrPayload?.trim()) {
+            setAlert(task._id, 'danger', `Foil QR is required for Colour ${c}.`);
+            return;
+          }
+          foilScans.push({ colourNumber: c, qrPayload: qrPayload.trim() });
+        }
+      } else {
+        setAlert(task._id, 'danger', 'Please enter or scan the foil QR payload.');
         return;
       }
-      foilScans.push({ colourNumber: c, qrPayload: payload.trim() });
+    } else if (qrPayload) {
+      foilScans.push({ colourNumber: 1, qrPayload });
+      // For multi-colour jobs, scan remaining
+      for (let c = 2; c <= colourCount; c++) {
+        qrPayload = await scanForColour(task._id, c);
+        if (!qrPayload?.trim()) {
+          setAlert(task._id, 'danger', `Foil QR is required for Colour ${c}.`);
+          return;
+        }
+        foilScans.push({ colourNumber: c, qrPayload: qrPayload.trim() });
+      }
     }
 
     try {
-      const form = new FormData();
-      form.append('foilScans', JSON.stringify(foilScans));
+      const formData = new FormData();
+      
+      // Attach foil image if selected
+      if (startForm.imageUri) {
+        const filename = startForm.imageUri.split('/').pop() || 'foil.jpg';
+        formData.append('foil_image', {
+          uri: startForm.imageUri,
+          type: 'image/jpeg',
+          name: filename,
+        });
+      }
+      
+      // Attach QR data
+      if (foilScans.length > 0) {
+        formData.append('foilScans', JSON.stringify(foilScans));
+      } else if (qrPayload?.trim()) {
+        formData.append('foil_qrPayload', qrPayload.trim());
+      }
 
       const resp = await fetch(`${API_BASE_URL}/tasks/${task._id}/start`, {
+        method: 'POST',
+        headers: { Authorization: token },
+        body: formData,
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(data.error || data.message || 'Failed to start task');
+      setAlert(task._id, 'success', data.message || 'Task started ✅');
+      // Clear start form
+      setTaskStartForms((prev) => { const n = { ...prev }; delete n[task._id]; return n; });
+      loadTasks();
+    } catch (err) {
+      setAlert(task._id, 'danger', err.message);
+    }
+  };
+
+  // ── Foil KG Input Modal (replaces iOS-only Alert.prompt) ─────────────────────
+  const [showFoilKgModal, setShowFoilKgModal] = useState(false);
+  const [foilKgEntries, setFoilKgEntries] = useState([]);
+  const [foilKgTaskId, setFoilKgTaskId] = useState(null);
+  const [foilKgProcessing, setFoilKgProcessing] = useState(false);
+
+  const openFoilKgModal = (task) => {
+    const usage = task.foilUsage || [];
+    const cf = completeForms[task._id] || {};
+    const totalUsed = Number(cf.usedKg || 0);
+    const defaultPer = usage.length ? Number((totalUsed / usage.length).toFixed(3)) : 0;
+
+    const entries = usage.map((entry) => ({
+      usageId: entry._id,
+      colourNumber: entry.colourNumber,
+      isSwap: entry.isSwap || false,
+      foilQrPayload: entry.foilQrPayload || '',
+      usedWeight: defaultPer,
+    }));
+
+    setFoilKgEntries(entries);
+    setFoilKgTaskId(task._id);
+    setShowFoilKgModal(true);
+  };
+
+  const submitFoilKgModal = async () => {
+    if (!foilKgTaskId) return;
+    setFoilKgProcessing(true);
+    clearAlert(foilKgTaskId);
+
+    const foilUsage = foilKgEntries.map((e) => ({
+      usageId: e.usageId,
+      usedWeight: Number(e.usedWeight || 0),
+    }));
+
+    const cf = completeForms[foilKgTaskId] || {};
+
+    try {
+      const form = new FormData();
+      form.append('used_kg', cf.usedKg || '0');
+      form.append('waste_kg', cf.wasteKg || '0');
+      form.append('remaining_kg', cf.remainingKg || '0');
+      form.append('foilUsage', JSON.stringify(foilUsage));
+
+      const resp = await fetch(`${API_BASE_URL}/tasks/${foilKgTaskId}/consume`, {
         method: 'POST',
         headers: { Authorization: token },
         body: form,
       });
       const data = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(data.error || data.message || 'Failed to start task');
-      setAlert(task._id, 'success', data.message || 'Task started ✅');
+      if (!resp.ok) throw new Error(data.error || data.message || 'Failed to complete task');
+      setAlert(foilKgTaskId, 'success', 'Task completed ✅');
+      setShowComplete((prev) => ({ ...prev, [foilKgTaskId]: false }));
+      setShowFoilKgModal(false);
+      setFoilKgTaskId(null);
       loadTasks();
     } catch (err) {
-      setAlert(task._id, 'danger', err.message);
+      setAlert(foilKgTaskId, 'danger', err.message);
+    } finally {
+      setFoilKgProcessing(false);
     }
   };
 
@@ -270,47 +435,8 @@ export default function WorkerDashboard() {
       return;
     }
 
-    // Ask user for per-roll used weight via Alert prompts
-    const foilUsage = [];
-    const totalUsed   = Number(cf.usedKg);
-    const defaultPer  = usage.length ? Number((totalUsed / usage.length).toFixed(3)) : 0;
-
-    for (const entry of usage) {
-      await new Promise((resolve) => {
-        Alert.prompt(
-          `Colour ${entry.colourNumber}${entry.isSwap ? ' (swap)' : ''} — Used KG`,
-          entry.foilQrPayload || '',
-          (val) => {
-            foilUsage.push({ usageId: entry._id, usedWeight: Number(val ?? defaultPer) });
-            resolve();
-          },
-          'plain-text',
-          String(defaultPer),
-          'numeric',
-        );
-      });
-    }
-
-    try {
-      const form = new FormData();
-      form.append('used_kg',    cf.usedKg);
-      form.append('waste_kg',   cf.wasteKg);
-      form.append('remaining_kg', cf.remainingKg);
-      form.append('foilUsage',  JSON.stringify(foilUsage));
-
-      const resp = await fetch(`${API_BASE_URL}/tasks/${task._id}/consume`, {
-        method: 'POST',
-        headers: { Authorization: token },
-        body: form,
-      });
-      const data = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(data.error || data.message || 'Failed to complete task');
-      setAlert(task._id, 'success', 'Task completed ✅');
-      setShowComplete((prev) => ({ ...prev, [task._id]: false }));
-      loadTasks();
-    } catch (err) {
-      setAlert(task._id, 'danger', err.message);
-    }
+    // Open Modal instead of using Alert.prompt (which crashes on Android)
+    openFoilKgModal(task);
   };
 
   const updateCompleteForm = (taskId, field, val) =>
@@ -429,10 +555,67 @@ export default function WorkerDashboard() {
         )}
       </Card>
 
+      {/* ── Foil KG Input Modal (cross-platform replacement for Alert.prompt) ── */}
+      <Modal visible={showFoilKgModal} animationType="slide" transparent onRequestClose={() => setShowFoilKgModal(false)}>
+        <View style={{ flex:1, backgroundColor:'rgba(0,0,0,0.5)', justifyContent:'flex-end' }}>
+          <View style={{ backgroundColor:colors.surface, borderTopLeftRadius:20, borderTopRightRadius:20, padding:spacing[4], maxHeight:'80%' }}>
+            <Text style={{ fontSize:fontSize.lg, fontWeight:'700', color:colors.text, marginBottom:spacing[3] }}>
+              ⚖️ Enter Foil Used KG Per Colour
+            </Text>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              {foilKgEntries.map((entry, idx) => (
+                <View key={entry.usageId || idx} style={{ marginBottom: spacing[3], padding: spacing[3], backgroundColor: colors.surfaceAlt, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}>
+                  <Text style={{ fontWeight:'700', color:colors.text, fontSize:fontSize.base, marginBottom:4 }}>
+                    Colour {entry.colourNumber}{entry.isSwap ? ' (swap)' : ''}
+                  </Text>
+                  {entry.foilQrPayload ? (
+                    <Text style={{ fontSize:fontSize.xs, color:colors.textMuted, marginBottom:spacing[2] }} numberOfLines={1}>
+                      QR: {entry.foilQrPayload}
+                    </Text>
+                  ) : null}
+                  <TextInput
+                    style={{
+                      backgroundColor:'#fff', borderWidth:1, borderColor:colors.border,
+                      borderRadius:6, paddingHorizontal:spacing[3], paddingVertical:spacing[2],
+                      fontSize:fontSize.base, color:colors.text,
+                    }}
+                    keyboardType="numeric"
+                    placeholder="Used KG"
+                    value={String(entry.usedWeight || '')}
+                    onChangeText={(val) => {
+                      const updated = [...foilKgEntries];
+                      updated[idx] = { ...updated[idx], usedWeight: val };
+                      setFoilKgEntries(updated);
+                    }}
+                  />
+                </View>
+              ))}
+            </ScrollView>
+            <View style={{ flexDirection:'row', gap:spacing[2], marginTop:spacing[2] }}>
+              <Btn
+                label={foilKgProcessing ? '⏳ Submitting...' : '✅ Submit & Complete'}
+                onPress={submitFoilKgModal}
+                loading={foilKgProcessing}
+                variant="success"
+                style={{ flex:2 }}
+                size="lg"
+              />
+              <Btn
+                label="Cancel"
+                onPress={() => { setShowFoilKgModal(false); setFoilKgTaskId(null); }}
+                variant="secondary"
+                style={{ flex:1 }}
+                size="lg"
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <QRScannerModal
         visible={scanVisible}
-        onScanned={handleScanned}
-        onClose={() => { setScanVisible(false); scanResolvers.current?.resolve?.(''); }}
+        onScanned={startScanning ? handleStartScanned : handleScanned}
+        onClose={() => { setScanVisible(false); setStartScanning(null); scanResolvers.current?.resolve?.(''); }}
       />
 
       {tasks.length === 0 ? (
@@ -472,6 +655,79 @@ export default function WorkerDashboard() {
             {/* Alert */}
             {alerts[task._id] && (
               <AlertBanner type={alerts[task._id].type} message={alerts[task._id].message} style={{ marginTop: spacing[2] }} />
+            )}
+
+            {/* ── Foil Input Section for STARTING TASK (pending tasks) ── */}
+            {task.status === 'pending' && (
+              <View style={{ marginTop: spacing[3], backgroundColor: colors.surfaceAlt, borderRadius: 8, padding: spacing[3], borderWidth: 1, borderColor: colors.primaryLight || '#dbeafe' }}>
+                <Text style={{ fontWeight: '700', fontSize: fontSize.sm, color: colors.primary, marginBottom: spacing[2] }}>
+                  📋 Foil Details for Task Start
+                </Text>
+
+                {/* Image Upload Buttons */}
+                <View style={{ flexDirection: 'row', gap: spacing[2], marginBottom: spacing[3] }}>
+                  <Btn
+                    label="📷 Take Photo"
+                    size="sm"
+                    variant="secondary"
+                    onPress={() => takeFoilPhoto(task._id)}
+                    style={{ flex: 1 }}
+                  />
+                  <Btn
+                    label="🖼️ Gallery"
+                    size="sm"
+                    variant="secondary"
+                    onPress={() => pickFoilImage(task._id)}
+                    style={{ flex: 1 }}
+                  />
+                </View>
+                {getStartForm(task._id).imageUri && (
+                  <View style={{ marginBottom: spacing[2] }}>
+                    <Text style={{ fontSize: fontSize.xs, color: colors.success, fontWeight: '600' }}>✅ Foil image attached</Text>
+                  </View>
+                )}
+
+                {/* Manual QR Input */}
+                <Text style={{ fontSize: fontSize.xs, fontWeight: '600', color: colors.text, marginBottom: spacing[1] }}>QR Payload</Text>
+                <TextInput
+                  style={{
+                    backgroundColor: '#fff', borderWidth: 1, borderColor: colors.border,
+                    borderRadius: 6, paddingHorizontal: spacing[3], paddingVertical: spacing[2],
+                    fontSize: fontSize.sm, color: colors.text, marginBottom: spacing[2],
+                  }}
+                  placeholder="Type or paste foil QR payload..."
+                  value={getStartForm(task._id).qrValue}
+                  onChangeText={(val) => updateStartForm(task._id, 'qrValue', val)}
+                />
+
+                {/* Mode toggle */}
+                <View style={{ flexDirection: 'row', gap: spacing[2], marginBottom: spacing[2] }}>
+                  <TouchableOpacity
+                    style={[{
+                      flex: 1, paddingVertical: spacing[2], borderRadius: 6, alignItems: 'center',
+                      borderWidth: 1, borderColor: getStartForm(task._id).mode === 'manual' ? colors.primary : colors.border,
+                      backgroundColor: getStartForm(task._id).mode === 'manual' ? colors.primary : colors.surface,
+                    }]}
+                    onPress={() => updateStartForm(task._id, 'mode', 'manual')}
+                  >
+                    <Text style={{ fontWeight: '700', fontSize: fontSize.xs, color: getStartForm(task._id).mode === 'manual' ? '#fff' : colors.text }}>
+                      ✏️ Manual
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[{
+                      flex: 1, paddingVertical: spacing[2], borderRadius: 6, alignItems: 'center',
+                      borderWidth: 1, borderColor: getStartForm(task._id).mode === 'scan' ? colors.primary : colors.border,
+                      backgroundColor: getStartForm(task._id).mode === 'scan' ? colors.primary : colors.surface,
+                    }]}
+                    onPress={() => { updateStartForm(task._id, 'mode', 'scan'); startTaskScan(task._id); }}
+                  >
+                    <Text style={{ fontWeight: '700', fontSize: fontSize.xs, color: getStartForm(task._id).mode === 'scan' ? '#fff' : colors.text }}>
+                      📷 Scan QR
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
             )}
 
             {/* Actions */}

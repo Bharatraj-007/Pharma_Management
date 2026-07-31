@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as Print from 'expo-print';
 
@@ -106,6 +106,46 @@ export async function exportToExcel(records, fromDate, toDate) {
   // Save and share
   await FileSystem.writeAsStringAsync(fileUri, wbout, { encoding: FileSystem.EncodingType.Base64 });
   await Sharing.shareAsync(fileUri, { mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', dialogTitle: 'Download Attendance Excel Report' });
+}
+
+/**
+ * Generic Excel exporter — accepts any array of plain objects.
+ * Used by Dispatch, Finance, AdvanceSalary, etc.
+ * @param {Object[]} records - array of plain-object rows (keys become headers)
+ * @param {string} fromDate
+ * @param {string} toDate
+ * @param {string} sheetTitle - name for the sheet and filename prefix
+ */
+export async function exportGenericExcel(records, fromDate, toDate, sheetTitle = 'Report') {
+  if (!records || records.length === 0) {
+    throw new Error('No records to export');
+  }
+
+  const headers = Object.keys(records[0]);
+  const dataRows = records.map(r => headers.map(h => r[h] ?? ''));
+
+  const allRows = [
+    [sheetTitle],
+    fromDate || toDate ? [`Period: ${fromDate || ''} — ${toDate || ''}`] : [],
+    [],
+    headers,
+    ...dataRows,
+  ].filter(r => r.length > 0);
+
+  const ws = XLSX.utils.aoa_to_sheet(allRows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetTitle.substring(0, 31));
+
+  const wbout = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
+  const safeName = sheetTitle.replace(/[^a-zA-Z0-9_]/g, '_');
+  const filename = `${safeName}_${fromDate || new Date().toISOString().split('T')[0]}.xlsx`;
+  const fileUri = `${FileSystem.documentDirectory}${filename}`;
+
+  await FileSystem.writeAsStringAsync(fileUri, wbout, { encoding: FileSystem.EncodingType.Base64 });
+  await Sharing.shareAsync(fileUri, {
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    dialogTitle: `Download ${sheetTitle} Excel`,
+  });
 }
 
 export async function exportToPDF(records, fromDate, toDate) {

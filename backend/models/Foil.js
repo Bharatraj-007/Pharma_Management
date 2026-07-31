@@ -15,8 +15,11 @@ const foilSchema = new mongoose.Schema({
   qrPayload: { type: String, required: true },
   // Keep version/serial separately for easier DB updates.
   version: { type: Number, default: 1 },
-  serial: { type: String, default: '0000' }
-});
+  serial: { type: String, default: '0000' },
+  isDeleted: { type: Boolean, default: false, index: true },
+  deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+  deletedAt: { type: Date }
+}, { timestamps: true });
 
 foilSchema.index({ company: 1 });
 foilSchema.index({ qrPayload: 1 });

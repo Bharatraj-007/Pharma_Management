@@ -1,6 +1,11 @@
 {
-  "dependencies": {
-    "exceljs": "^4.4.0",
-    "pdfkit": "^0.19.1"
+  "name": "smart-pharma-system",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Smart Pharma Management System — Express Backend, Expo Web Portal, and Expo Mobile App",
+  "scripts": {
+    "start:backend": "cd backend && npm start",
+    "start:web": "cd mobile && npx expo start --web",
+    "start:mobile": "cd mobile && npx expo start"
   }
 }

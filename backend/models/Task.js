@@ -13,6 +13,13 @@ const taskSchema = new mongoose.Schema({
     max: 8,
     default: 1
   },
+
+  // Client company & assigned reference CDR sample
+  clientCompany: String,
+  referenceFileId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "TaskFile"
+  },
   
   
   // Original fields

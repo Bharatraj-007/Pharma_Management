@@ -138,12 +138,15 @@ export default function AdminDashboard() {
       <Card style={{ marginBottom: spacing[4] }}>
         <View style={s.actionRow}>
           {[
-            { label: 'Tasks',       screen: 'Tasks',          color: colors.primary },
-            { label: 'Attendance',  screen: 'Attendance',     color: colors.neutral },
-            { label: 'Inventory',   screen: 'Inventory',      color: colors.accent },
-            { label: 'Reports',     screen: 'Reports',        color: colors.success },
-            { label: 'Users',       screen: 'UserManagement', color: colors.warning },
-            { label: 'Audit Logs',  screen: 'AuditLogs',      color: colors.danger },
+            { label: 'Tasks',          screen: 'Tasks',          color: colors.primary },
+            { label: 'Inventory',      screen: 'Inventory',      color: colors.accent },
+            { label: 'Product Master', screen: 'ProductMaster',  color: '#6366f1' },
+            { label: 'Dispatch',       screen: 'Dispatch',       color: '#059669' },
+            { label: 'Finance & P&L',  screen: 'Finance',        color: '#d97706' },
+            { label: 'Advance Salary', screen: 'AdvanceSalary',  color: '#2563eb' },
+            { label: 'Attendance',     screen: 'Attendance',     color: colors.neutral },
+            { label: 'Reports',        screen: 'Reports',        color: colors.success },
+            { label: 'Users',          screen: 'UserManagement', color: colors.warning },
           ].map((item) => (
             <TouchableOpacity
               key={item.screen}

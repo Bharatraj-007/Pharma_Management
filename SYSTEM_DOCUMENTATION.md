@@ -55,7 +55,18 @@ The platform implements a **strict 2-tier administrative role hierarchy** with s
 
 ```
                       +-----------------------------+
-                      |   Super Admin / CEO Level   |
+                      |   
+                      
+                      
+                      
+                      
+                      
+                      
+                      
+                      
+                      
+                      
+                       Admin / CEO Level   |
                       | (cross-company access to    |
                       |  Co 1, Co 2, & Co 3 data)   |
                       +--------------+--------------+
@@ -73,8 +84,8 @@ The platform implements a **strict 2-tier administrative role hierarchy** with s
 +----------------+          +----------------+          +----------------+
 ```
 
-### **1. Super Admin (Owner / CEO Level)**
-- **Role Code:** `super_admin` or `ceo`
+### **1. CEO (Group Owner / System Head)**
+- **Role Code:** `ceo`
 - **Company Access:** `companyAccess: ['bharath', 'shree_ganaapathy', 'vel']` (All 3 companies)
 - **UI Behavior:**
   - Header features a **Company Switcher Dropdown**:
@@ -92,7 +103,7 @@ The platform implements a **strict 2-tier administrative role hierarchy** with s
   - **No Company Switcher** is visible; UI is locked exclusively to their assigned company.
   - All screens (Inventory, Dispatch, Attendance, Tasks, Reports, Chat) automatically query and restrict data to their assigned company.
 - **Security Middleware (`checkCompanyAccess`):**
-  - Intercepts API requests. If a non-super-admin user attempts to query data from a company outside their `companyAccess`, the server blocks the request and returns **HTTP 403 Access Denied**.
+  - Intercepts API requests. If a non-CEO user attempts to query data from a company outside their `companyAccess`, the server overrides it server-side and returns **HTTP 403 Access Denied**.
 
 ---
 
@@ -105,7 +116,7 @@ The platform implements a **strict 2-tier administrative role hierarchy** with s
   name: String,
   email: { type: String, unique: true },
   password: String,
-  role: 'super_admin' | 'ceo' | 'admin' | 'manager' | 'worker',
+  role: 'ceo' | 'admin' | 'manager' | 'worker',
   company: String,             // Primary company code ('bharath' | 'shree_ganaapathy' | 'vel')
   assignedCompany: String,     // Scoped company assignment
   companyAccess: [String],     // Array of authorized companies
@@ -241,7 +252,7 @@ The platform implements a **strict 2-tier administrative role hierarchy** with s
 
 | Account Role | Email Address | Assigned Company | Default Password |
 |---|---|---|---|
-| **Super Admin (Owner/CEO)** | `superadmin@system.com` | All Companies | `Admin@123` |
+| **Group CEO (Owner / System Head)** | `ceo@system.com` | All Companies | `Admin@123` |
 | **Bharath Admin (Company 1)** | `admin@bharath.com` | Bharath Enterprises | `Admin@123` |
 | **Bharath CEO** | `ceo@bharath.com` | Bharath Enterprises | `Admin@123` |
 | **Bharath Manager** | `manager@bharath.com` | Bharath Enterprises | `Admin@123` |

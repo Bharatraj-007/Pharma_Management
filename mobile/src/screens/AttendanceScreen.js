@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useContext, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, Modal, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Modal, Alert, Platform } from 'react-native';
 import { AuthContext } from '../navigation/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
 import API_BASE_URL from '../config';
@@ -10,6 +10,8 @@ import {
   Btn, Input, Spinner, EmptyState, StatCard,
 } from '../components/ui';
 import { colors, spacing, fontSize, statusBadgeVariant, pageStyles } from '../styles/theme';
+
+import AttendanceScreenWeb from '../frontend-webui/screens/AttendanceScreen.web';
 
 const STATUS_OPTIONS = [
   { value: 'Present', label: '✅ Present' },
@@ -55,8 +57,13 @@ const ch = StyleSheet.create({
   activeText: { color: '#fff', fontWeight: '700' },
 });
 
-export default function AttendanceScreen() {
+export default function AttendanceScreen(props) {
   const { session } = useContext(AuthContext);
+
+  if (Platform.OS === 'web') {
+    return <AttendanceScreenWeb apiBaseUrl={API_BASE_URL} session={session} {...props} />;
+  }
+
   const { role, isRole } = usePermissions();
   const token = session?.token;
   const userName = session?.name || 'Worker';
@@ -78,9 +85,11 @@ export default function AttendanceScreen() {
   const [marking, setMarking] = useState(false);
   const setMF = (k) => (v) => setMarkForm((p) => ({ ...p, [k]: v }));
 
-  // Table Date Filter (defaults to today)
+  // Table Date & Search Filters (defaults to today)
   const today = new Date().toISOString().split('T')[0];
   const [filterDate, setFilterDate] = useState(today);
+  const [filterStatus, setFilterStatus] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Report export state
   const firstDayOfMonth = (() => {
@@ -145,7 +154,13 @@ export default function AttendanceScreen() {
     setLoading(true); setError('');
     try {
       const res = await fetch(`${API_BASE_URL}/attendance?date=${filterDate}`, { headers: { Authorization: token } });
-      if (!res.ok) throw new Error('Unable to load attendance.');
+      if (res.status === 401) {
+        throw new Error('Session expired. Please Sign Out and log in again.');
+      }
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || `Server error (${res.status}): Unable to load attendance.`);
+      }
       const data = await res.json();
       const list = Array.isArray(data) ? data : [];
       setRecords(list);
@@ -314,6 +329,12 @@ export default function AttendanceScreen() {
     { present: 0, absent: 0, leave: 0, totalHours: 0, totalPay: 0 },
   );
 
+  const filteredRecords = records.filter((r) => {
+    const matchesStatus = !filterStatus || (r.status || '').toLowerCase() === filterStatus.toLowerCase();
+    const matchesSearch = !searchQuery || (r.workerName || '').toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesStatus && matchesSearch;
+  });
+
   return (
     <ScreenWrapper refreshing={loading} onRefresh={fetchRecords}>
       <View style={pageStyles.header}>
@@ -345,18 +366,41 @@ export default function AttendanceScreen() {
         </View>
       </View>
 
-      {/* Date filter dropdown */}
-      <Card style={{ marginBottom: spacing[4], flexDirection: 'row', alignItems: 'center', gap: spacing[3], justifyContent: 'space-between' }}>
-        <View style={{ flex: 1 }}>
-          <Text style={s.label}>Selected Date</Text>
-          <Input
-            value={filterDate}
-            onChangeText={setFilterDate}
-            placeholder="YYYY-MM-DD"
-            style={{ marginBottom: 0 }}
+      {/* Search, Status & Date Filter Controls */}
+      <Card style={{ marginBottom: spacing[4] }}>
+        <CardTitle style={{ marginBottom: spacing[2] }}>🔍 Filter Attendance Logs</CardTitle>
+        <Input
+          placeholder="🔍 Search employee name..."
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          style={{ marginBottom: spacing[2] }}
+        />
+        <View style={{ marginBottom: spacing[2] }}>
+          <Text style={s.label}>Filter by Status</Text>
+          <ChipRow
+            options={[
+              { value: '', label: 'All Statuses' },
+              { value: 'Present', label: 'Present' },
+              { value: 'Absent', label: 'Absent' },
+              { value: 'Late', label: 'Late' },
+              { value: 'Half Day', label: 'Half Day' },
+            ]}
+            value={filterStatus}
+            onChange={setFilterStatus}
           />
         </View>
-        <Btn label="Refresh" onPress={fetchRecords} style={{ marginTop: 14 }} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[3], justifyContent: 'space-between' }}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.label}>Selected Date</Text>
+            <Input
+              value={filterDate}
+              onChangeText={setFilterDate}
+              placeholder="YYYY-MM-DD"
+              style={{ marginBottom: 0 }}
+            />
+          </View>
+          <Btn label="Refresh" onPress={fetchRecords} style={{ marginTop: 14 }} />
+        </View>
       </Card>
 
       {/* Export Report Card */}
@@ -469,14 +513,14 @@ export default function AttendanceScreen() {
       <Card style={{ marginBottom: spacing[6] }}>
         <CardHeader>
           <CardTitle style={{ marginBottom: 0 }}>
-            {role === 'worker' ? 'Your History' : 'Attendance Records'}
+            Attendance Log ({filteredRecords.length})
           </CardTitle>
         </CardHeader>
 
-        {loading ? <Spinner /> : records.length === 0 ? (
+        {loading ? <Spinner /> : filteredRecords.length === 0 ? (
           <EmptyState message="No attendance records found." />
         ) : (
-          records.map((rec) => (
+          filteredRecords.map((rec) => (
             <View key={rec._id} style={s.recCard}>
               <View style={[s.row, { justifyContent: 'space-between', marginBottom: 4 }]}>
                 <Text style={s.recName}>{rec.workerName}</Text>

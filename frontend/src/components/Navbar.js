@@ -114,7 +114,7 @@ function Navbar() {
         )}
         <div className="sp-navbar-brand">
           <h2>💊 Smart Pharma</h2>
-          {(['super_admin', 'ceo'].includes(localStorage.getItem("role"))) ? (
+          {localStorage.getItem("role") === "ceo" ? (
             <select
               value={localStorage.getItem("activeCompany") || company || "all"}
               onChange={(e) => {
@@ -135,10 +135,10 @@ function Navbar() {
                 cursor: 'pointer'
               }}
             >
-              <option value="all">🏢 All Companies (Super Admin)</option>
-              <option value="bharath">Pharma Printing (Bharath - Co 1)</option>
-              <option value="shree_ganaapathy">Commercial Printing (Shree - Co 2)</option>
-              <option value="vel">Cylinder Mfg (Vel Gravure - Co 3)</option>
+              <option value="all">🏢 All Companies (CEO Overview)</option>
+              <option value="bharath">Bharath Enterprises (Company 1)</option>
+              <option value="shree_ganaapathy">Shree Ganaapathy Roto Prints (Company 2)</option>
+              <option value="vel">Vel Gravure (Company 3)</option>
             </select>
           ) : (
             company && <span className="company-badge">{getCompanyName(company)}</span>

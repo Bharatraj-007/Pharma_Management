@@ -27,7 +27,6 @@
         "backgroundColor": "#1a56db"
       },
       "package": "com.smartpharma.mobile",
-
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
@@ -72,18 +71,13 @@
             "buildToolsVersion": "35.0.0"
           }
         }
-      ]
+      ],
+      "expo-audio"
     ],
     "extra": {
       "eas": {
-        "projectId": "smart-pharma-mobile"
+        "projectId": "00000000-0000-0000-0000-000000000000"
       }
-    },
-    "updates": {
-      "url": "https://u.expo.dev/smart-pharma-mobile"
-    },
-    "runtimeVersion": {
-      "policy": "appVersion"
     }
   }
 }

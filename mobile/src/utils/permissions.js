@@ -1,41 +1,48 @@
 // Mirrors frontend/src/permissions.js exactly — no web-only APIs, safe for RN.
 
 export const ROLES = {
-  super_admin: 'Super Admin',
-  admin:   'Admin',
   ceo:     'CEO',
+  admin:   'Admin',
   manager: 'Manager',
   worker:  'Worker',
 };
 
 export const PERMISSIONS = {
-  dashboard:        ['super_admin', 'admin', 'ceo', 'manager', 'worker'],
-  tasks:            ['super_admin', 'admin', 'ceo', 'manager', 'worker'],
-  stock:            ['super_admin', 'admin', 'ceo', 'manager'],
-  dispatch:         ['super_admin', 'admin', 'ceo', 'manager'],
-  attendance:       ['super_admin', 'admin', 'ceo', 'manager', 'worker'],
-  leaveManagement:  ['super_admin', 'admin', 'ceo', 'manager', 'worker'],
-  reports:          ['super_admin', 'admin', 'ceo', 'manager', 'worker'],
-  auditLogs:        ['super_admin', 'admin', 'ceo'],
-  userManagement:   ['super_admin', 'admin', 'ceo'],
-  salaryManagement: ['super_admin', 'admin', 'ceo'],
-  settings:         ['super_admin', 'admin', 'ceo', 'manager', 'worker'],
-  chat:             ['super_admin', 'admin', 'ceo', 'manager', 'worker'],
+  dashboard:        ['ceo', 'admin', 'manager', 'worker'],
+  tasks:            ['ceo', 'admin', 'manager', 'worker'],
+  stock:            ['ceo', 'admin', 'manager'],
+  products:         ['ceo', 'admin', 'manager'],
+  dispatch:         ['ceo', 'admin', 'manager'],
+  finance:          ['ceo', 'admin'],
+  advanceSalary:    ['ceo', 'admin', 'manager', 'worker'],
+  clientCompany:    ['ceo', 'admin', 'manager', 'worker'],
+  attendance:       ['ceo', 'admin', 'manager', 'worker'],
+  leaveManagement:  ['ceo', 'admin', 'manager', 'worker'],
+  reports:          ['ceo', 'admin', 'manager', 'worker'],
+  auditLogs:        ['ceo', 'admin'],
+  userManagement:   ['ceo', 'admin'],
+  salaryManagement: ['ceo', 'admin'],
+  settings:         ['ceo', 'admin', 'manager', 'worker'],
+  chat:             ['ceo', 'admin', 'manager', 'worker'],
 };
 
 export const ACTION_PERMISSIONS = {
-  assignTasks:  ['super_admin', 'admin', 'ceo', 'manager'],
-  approveLeave: ['super_admin', 'admin', 'ceo', 'manager'],
-  editSalary:   ['super_admin', 'admin', 'ceo'],
-  manageUsers:  ['super_admin', 'admin', 'ceo'],
-  viewAuditLogs:['super_admin', 'admin', 'ceo'],
+  assignTasks:  ['ceo', 'admin', 'manager'],
+  approveLeave: ['ceo', 'admin', 'manager'],
+  editSalary:   ['ceo', 'admin'],
+  manageUsers:  ['ceo', 'admin'],
+  viewAuditLogs:['ceo', 'admin'],
 };
 
 export const MENU_ITEMS = [
   { key: 'dashboard',        label: 'Dashboard',   icon: '📊', screen: 'Dashboard',       section: 'main' },
+  { key: 'clientCompany',    label: 'Client Company',icon: '🏢', screen: 'ClientCompany',   section: 'main' },
   { key: 'tasks',            label: 'Tasks',        icon: '📋', screen: 'Tasks',           section: 'main' },
   { key: 'stock',            label: 'Inventory',    icon: '📦', screen: 'Inventory',       section: 'main' },
+  { key: 'products',         label: 'Product Master',icon: '🏷️', screen: 'ProductMaster',   section: 'main' },
   { key: 'dispatch',         label: 'Dispatch',     icon: '🚚', screen: 'Dispatch',        section: 'main' },
+  { key: 'finance',          label: 'Finance & P&L',icon: '💵', screen: 'Finance',         section: 'main' },
+  { key: 'advanceSalary',    label: 'Advance Salary',icon: '💵', screen: 'AdvanceSalary',  section: 'main' },
   { key: 'attendance',       label: 'Attendance',   icon: '⏱️', screen: 'Attendance',      section: 'main' },
   { key: 'leaveManagement',  label: 'Leave',        icon: '🗓️', screen: 'Leave',           section: 'main' },
   { key: 'reports',          label: 'Reports',      icon: '📈', screen: 'Reports',         section: 'main' },

@@ -9,7 +9,12 @@
  */
 import 'react-native-gesture-handler'; // ← must be the FIRST import
 import React from 'react';
-import { Text, View } from 'react-native';
+import { Text, View, LogBox } from 'react-native';
+
+LogBox.ignoreLogs([
+  '[expo-av]: Expo AV has been deprecated',
+  '`ImagePicker.MediaTypeOptions` have been deprecated',
+]);
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';

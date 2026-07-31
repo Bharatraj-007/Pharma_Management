@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useContext } from 'react';
-import { View, Text, StyleSheet, Alert } from 'react-native';
+import { View, Text, StyleSheet, Alert, Modal, TextInput, TouchableOpacity } from 'react-native';
 import { usePermissions } from '../hooks/usePermissions';
 import { AuthContext } from '../navigation/AuthContext';
 import API_BASE_URL from '../config';
@@ -25,6 +25,11 @@ export default function LeaveScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [form, setForm] = useState({ type: 'Sick', from: '', to: '', reason: '' });
   const [submitting, setSubmitting] = useState(false);
+
+  // Approve/Reject with remarks
+  const [remarksModal, setRemarksModal] = useState(false);
+  const [remarkText, setRemarkText] = useState('');
+  const [pendingAction, setPendingAction] = useState(null); // { id, status }
 
   const headers = {
     'Content-Type': 'application/json',
@@ -85,12 +90,12 @@ export default function LeaveScreen() {
     }
   };
 
-  const updateStatus = async (id, status) => {
+  const updateStatus = async (id, status, remarks) => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/leave/${id}`, {
         method: 'PUT',
         headers,
-        body: JSON.stringify({ status })
+        body: JSON.stringify({ status, remarks: remarks || (status === 'Approved' ? 'Approved by supervisor' : 'Rejected by supervisor') })
       });
       const data = await res.json();
       if (res.ok) {
@@ -102,6 +107,12 @@ export default function LeaveScreen() {
     } catch (err) {
       Alert.alert('Error', err.message);
     }
+  };
+
+  const promptApproval = (id, status) => {
+    setPendingAction({ id, status });
+    setRemarkText('');
+    setRemarksModal(true);
   };
 
   const set = (k) => (v) => setForm((p) => ({ ...p, [k]: v }));
@@ -173,8 +184,8 @@ export default function LeaveScreen() {
                 <Badge variant={statusVariant(req.status)} label={req.status} />
                 {can('approveLeave') && req.status === 'Pending' && (
                   <View style={{ flexDirection:'row', gap:spacing[2], marginTop: 5 }}>
-                    <Btn label="✓" size="sm" variant="success" onPress={() => updateStatus(req._id, 'Approved')} />
-                    <Btn label="✗" size="sm" variant="danger"  onPress={() => updateStatus(req._id, 'Rejected')} />
+                    <Btn label="✓ Approve" size="sm" variant="success" onPress={() => promptApproval(req._id, 'Approved')} />
+                    <Btn label="✗ Reject"  size="sm" variant="danger"  onPress={() => promptApproval(req._id, 'Rejected')} />
                   </View>
                 )}
               </View>
@@ -182,6 +193,43 @@ export default function LeaveScreen() {
           ))
         )}
       </Card>
+
+      {/* ── Remarks Modal ── */}
+      <Modal visible={remarksModal} animationType="fade" transparent onRequestClose={() => setRemarksModal(false)}>
+        <View style={{ flex:1, backgroundColor:'rgba(0,0,0,0.5)', justifyContent:'center', padding:20 }}>
+          <View style={{ backgroundColor:colors.surface, borderRadius:12, padding:20 }}>
+            <Text style={{ fontWeight:'700', fontSize:16, color:colors.text, marginBottom:12 }}>
+              {pendingAction?.status === 'Approved' ? '✅ Approve Leave' : '❌ Reject Leave'}
+            </Text>
+            <Text style={{ fontSize:13, color:colors.text, marginBottom:6 }}>Remarks (optional)</Text>
+            <TextInput
+              style={{ borderWidth:1, borderColor:colors.border, borderRadius:8, padding:10, color:colors.text, backgroundColor:colors.surface, minHeight:60, marginBottom:12 }}
+              multiline
+              placeholder="Add reason or notes..."
+              placeholderTextColor={colors.textMuted}
+              value={remarkText}
+              onChangeText={setRemarkText}
+            />
+            <View style={{ flexDirection:'row', gap:10 }}>
+              <TouchableOpacity
+                style={{ flex:1, padding:12, borderRadius:8, backgroundColor: pendingAction?.status === 'Approved' ? '#16a34a' : '#dc2626', alignItems:'center' }}
+                onPress={() => {
+                  setRemarksModal(false);
+                  updateStatus(pendingAction.id, pendingAction.status, remarkText);
+                }}
+              >
+                <Text style={{ color:'#fff', fontWeight:'700' }}>{pendingAction?.status}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex:1, padding:12, borderRadius:8, backgroundColor:colors.border, alignItems:'center' }}
+                onPress={() => setRemarksModal(false)}
+              >
+                <Text style={{ fontWeight:'700', color:colors.text }}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScreenWrapper>
   );
 }

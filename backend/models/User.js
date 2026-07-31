@@ -5,10 +5,14 @@ const userSchema = new mongoose.Schema({
   name: String,
   email: { type: String, unique: true },
   password: String,
-  role: String, // super_admin, ceo, admin, manager, worker
-  company: String, // primary company: bharath, shree_ganaapathy, vel (or company1, company2, company3)
-  assignedCompany: { type: String, default: "" }, // primary assigned company
-  companyAccess: [{ type: String }], // Array of authorized companies, e.g. ['bharath', 'shree_ganaapathy', 'vel'] for super_admin
+  role: String, // ceo, admin, manager, worker
+  assignedCompany: { type: String, required: true, default: "bharath" }, // single company for normal admin/manager/worker
+  companyAccess: [{ type: String }], // populated for ceo, e.g. ['bharath', 'shree_ganaapathy', 'vel']
+  refreshToken: { type: String, default: "" },
+  isFirstLogin: { type: Boolean, default: false },
+  isDeleted: { type: Boolean, default: false, index: true },
+  deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+  deletedAt: { type: Date },
   department: { type: String, default: "" },
   shiftTiming: { type: String, default: "" },
   phone: { type: String, default: "" },

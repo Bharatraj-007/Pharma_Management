@@ -9,7 +9,7 @@ function Dispatch() {
   const activeCompanyOverride = localStorage.getItem("activeCompany");
 
   // Determine actual active company for queries
-  const activeCompany = (['super_admin', 'ceo'].includes(userRole) && activeCompanyOverride)
+  const activeCompany = (userRole === 'ceo' && activeCompanyOverride)
     ? activeCompanyOverride
     : userCompany;
 
@@ -60,6 +60,92 @@ function Dispatch() {
     ? "roll"
     : "foil";
 
+  // Product Master list state & quick modal state
+  const [productList, setProductList] = useState([]);
+  const [selectedProductId, setSelectedProductId] = useState("");
+  const [showAddProductModal, setShowAddProductModal] = useState(false);
+  const [newProdName, setNewProdName] = useState("");
+  const [newProdSize, setNewProdSize] = useState("");
+  const [newProdWeight, setNewProdWeight] = useState("");
+  const [newProdColors, setNewProdColors] = useState("1");
+  const [addingProduct, setAddingProduct] = useState(false);
+
+  const fetchProducts = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/products?company=${currentCompany}&limit=100`, {
+        headers: { Authorization: token }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setProductList(data.data || []);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, [token, currentCompany]);
+
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
+
+  const handleSelectProduct = (prodId) => {
+    setSelectedProductId(prodId);
+    if (!prodId) return;
+    const prod = productList.find(p => p._id === prodId);
+    if (prod) {
+      setProductName(prod.productName);
+      if (productType === "cylinder") {
+        setSize(prod.size || "");
+        setNumberOfColors(String(prod.numberOfColors || 1));
+      } else if (productType === "roll") {
+        setRollSize(prod.size || "");
+        setRollWeightKg(String(prod.weightKg || ""));
+        setRollColors(`${prod.numberOfColors || 1} Colors`);
+      } else {
+        setDimensions(prod.size || "");
+        setWeightKg(String(prod.weightKg || ""));
+        setColors(`${prod.numberOfColors || 1} Colors`);
+      }
+    }
+  };
+
+  const handleCreateProductInline = async (e) => {
+    e.preventDefault();
+    if (!newProdName) return;
+    setAddingProduct(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/products`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: token
+        },
+        body: JSON.stringify({
+          company: currentCompany,
+          productName: newProdName,
+          size: newProdSize,
+          weightKg: newProdWeight ? Number(newProdWeight) : 0,
+          numberOfColors: newProdColors ? Number(newProdColors) : 1
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setShowAddProductModal(false);
+        setNewProdName("");
+        setNewProdSize("");
+        setNewProdWeight("");
+        fetchProducts();
+        if (data.product) {
+          handleSelectProduct(data.product._id);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setAddingProduct(false);
+    }
+  };
+
   // Fetch Report Data
   const fetchReport = useCallback(async () => {
     setReportLoading(true);
@@ -91,6 +177,9 @@ function Dispatch() {
 
   useEffect(() => {
     fetchReport();
+    const handleCompanyChange = () => fetchReport();
+    window.addEventListener("companyChanged", handleCompanyChange);
+    return () => window.removeEventListener("companyChanged", handleCompanyChange);
   }, [fetchReport]);
 
   // Submit Dispatch Record
@@ -248,6 +337,33 @@ function Dispatch() {
           )}
 
           <form onSubmit={handleSubmitDispatch} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+            {/* Product Master Searchable Dropdown */}
+            <div className="sp-form-group" style={{ gridColumn: "span 2" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                <label className="sp-label" style={{ margin: 0 }}>Select Product from Product Master *</label>
+                <button
+                  type="button"
+                  onClick={() => setShowAddProductModal(true)}
+                  className="sp-btn sp-btn-sm sp-btn-neutral"
+                  style={{ fontSize: "11px", fontWeight: "bold" }}
+                >
+                  ➕ Add New Product
+                </button>
+              </div>
+              <select
+                className="sp-select"
+                value={selectedProductId}
+                onChange={(e) => handleSelectProduct(e.target.value)}
+              >
+                <option value="">-- Choose Existing Product from Catalog --</option>
+                {productList.map((p) => (
+                  <option key={p._id} value={p._id}>
+                    {p.productName} ({p.size ? `Size: ${p.size}` : ""} {p.weightKg ? `· ${p.weightKg}kg` : ""})
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="sp-form-group" style={{ gridColumn: "span 2" }}>
               <label className="sp-label">Product Name / Item Description *</label>
               <input
@@ -484,8 +600,8 @@ function Dispatch() {
           <div className="sp-card" style={{ padding: "16px", marginBottom: "20px" }}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "16px", alignItems: "center", justifyContent: "space-between" }}>
               <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-                {/* Company Filter (Super Admin sees company switcher) */}
-                {['super_admin', 'ceo'].includes(userRole) && (
+                {/* Company Filter (CEO sees company switcher) */}
+                {userRole === 'ceo' && (
                   <div>
                     <label style={{ fontSize: "12px", fontWeight: "bold", display: "block", marginBottom: "4px" }}>Company Filter</label>
                     <select
@@ -723,6 +839,71 @@ function Dispatch() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Inline Quick Add Product Master Modal */}
+      {showAddProductModal && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 1000
+        }}>
+          <div className="sp-card" style={{ width: "400px", padding: "24px", backgroundColor: "#fff" }}>
+            <h3 style={{ margin: "0 0 16px 0", color: "var(--color-primary)" }}>➕ Add New Product Master Record</h3>
+            <form onSubmit={handleCreateProductInline} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              <div className="sp-form-group">
+                <label className="sp-label">1. Product Name *</label>
+                <input
+                  type="text"
+                  className="sp-input"
+                  placeholder="e.g. Paracetamol Foil 100mm"
+                  value={newProdName}
+                  onChange={(e) => setNewProdName(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="sp-form-group">
+                <label className="sp-label">2. Size / Dimensions</label>
+                <input
+                  type="text"
+                  className="sp-input"
+                  placeholder="e.g. 100mm x 500m"
+                  value={newProdSize}
+                  onChange={(e) => setNewProdSize(e.target.value)}
+                />
+              </div>
+              <div className="sp-form-group">
+                <label className="sp-label">3. Weight (kg)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  className="sp-input"
+                  placeholder="e.g. 25.5"
+                  value={newProdWeight}
+                  onChange={(e) => setNewProdWeight(e.target.value)}
+                />
+              </div>
+              <div className="sp-form-group">
+                <label className="sp-label">4. Number of Colors</label>
+                <input
+                  type="number"
+                  className="sp-input"
+                  value={newProdColors}
+                  onChange={(e) => setNewProdColors(e.target.value)}
+                  min="1"
+                />
+              </div>
+
+              <div style={{ display: "flex", gap: "10px", marginTop: "12px" }}>
+                <button type="submit" className="sp-btn sp-btn-success" style={{ flex: 1 }} disabled={addingProduct}>
+                  {addingProduct ? "Saving..." : "💾 Save & Select"}
+                </button>
+                <button type="button" onClick={() => setShowAddProductModal(false)} className="sp-btn sp-btn-neutral">
+                  Cancel
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

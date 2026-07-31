@@ -400,7 +400,7 @@ export default function ChatScreen() {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: mediaType === 'Videos' ? ImagePicker.MediaTypeOptions.Videos : ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: mediaType === 'Videos' ? ['videos'] : ['images'],
         allowsEditing: true,
         quality: 0.7
       });

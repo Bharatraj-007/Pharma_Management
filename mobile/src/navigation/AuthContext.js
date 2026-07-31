@@ -76,6 +76,9 @@ export function AuthProvider({ children }) {
       if (myUserId) {
         newSocket.emit('join', myUserId);
       }
+      if (session?.company) {
+        newSocket.emit('join_company', { company: session.company, role: session.role });
+      }
     });
 
     setSocket(newSocket);
@@ -100,8 +103,14 @@ export function AuthProvider({ children }) {
     setSession(null);
   };
 
+  const setActiveCompany = async (companyCode) => {
+    const updated = { ...session, activeCompany: companyCode };
+    await saveSession(updated);
+    setSession(updated);
+  };
+
   return (
-    <AuthContext.Provider value={{ session, signIn, signOut, loading, socket }}>
+    <AuthContext.Provider value={{ session, signIn, signOut, setActiveCompany, loading, socket }}>
       {children}
     </AuthContext.Provider>
   );

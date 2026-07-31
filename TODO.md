@@ -1,23 +1,15 @@
-# TODO - Inventory Stock Access (Role-Based)
+# Implementation Tasks
 
-- [x] Step 1: Update frontend role/permission constants
-  - [x] frontend/src/permissions.js: stock access is now limited to required roles only.
-  - [x] Fixed role naming mismatch by enforcing stored roles as "CEO"/"Admin"/"Manager".
+## Priority 1: 🔴 Fix Critical Broken Features
+- [x] 1.1 Fix Android Crash - Alert.prompt → Modal in WorkerDashboard
+- [x] 1.2 Fix Deprecated expo-file-system in reportExporter.js
+- [x] 1.3 Add CEO Company Filter to Tasks Screen
 
-- [x] Step 2: Ensure route-level protection matches required roles
-  - [x] frontend/src/App.js: /stock is guarded by permission="stock".
-  - [x] frontend/src/components/ProtectedRoute.js: additional guard blocks any non CEO/Admin/Manager.
+## Priority 2: 🟡 Fix Missing Features
+- [x] 2.1 Add Foil Image Upload + Manual QR Input to WorkerDashboard
+- [x] 2.2 Add Inline Product Creation in DispatchScreen
+- [x] 2.3 Fix CEO Dashboard to show live data
 
-- [x] Step 3: Enforce backend API protection for ALL stock endpoints
-  - [x] backend/server.js: foil/cylinder CRUD + stock-logs/audit-logs restricted.
-  - [x] backend/server.js: also restricted /foils/barcode/:barcode.
-
-- [x] Step 4: Update Inventory page frontend gating text + allowedRoles list
-  - [x] frontend/src/pages/Inventory.js: UI actions restricted to "CEO"/"Admin"/"Manager" only.
-
-
-- [ ] Step 5: Test cases checklist
-  - [ ] Login as CEO/Admin/Manager: sidebar shows Inventory and route loads + tabs + QR/barcode generation + CRUD works.
-  - [ ] Login as Supervisor/Worker: sidebar does not show Inventory and navigating to /stock redirects to /dashboard or Access Denied.
-  - [ ] Verify backend returns 403 for unauthorized stock API requests.
+## Priority 3: ✅ Add Visible Feedback
+- [ ] 3.1 Audit all screens for success/error feedback
 

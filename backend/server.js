@@ -21,6 +21,16 @@ const LeaveRequest = require("./models/LeaveRequest");
 const Holiday = require("./models/Holiday");
 const Notification = require("./models/Notification");
 const AdvanceRequest = require("./models/AdvanceRequest");
+const ClientCompany = require("./models/ClientCompany");
+const ClientProduct = require("./models/ClientProduct");
+const TaskFile = require("./models/TaskFile");
+const { processCdrConversion } = require("./utils/cdrConverter");
+const AdmZip = require("adm-zip");
+const helmet = require("helmet");
+const mongoSanitize = require("express-mongo-sanitize");
+const rateLimit = require("express-rate-limit");
+const Product = require("./models/Product");
+const Transaction = require("./models/Transaction");
 const Dispatch = require("./models/Dispatch");
 const ExcelJS = require("exceljs");
 const PDFDocument = require("pdfkit");
@@ -66,6 +76,17 @@ async function uploadToCloudinary(filePath, companyKey) {
 }
 
 const app = express();
+app.use(helmet({ crossOriginResourcePolicy: false }));
+app.use(mongoSanitize());
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { error: "Too many login attempts from this IP. Please try again after 15 minutes." },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
 const http = require("http");
 const socketIo = require("socket.io");
 const server = http.createServer(app);
@@ -79,19 +100,25 @@ const io = socketIo(server, {
 const onlineUsers = new Map();
 
 io.on("connection", (socket) => {
-  console.log("A user connected:", socket.id);
+  socket.on("join_company", ({ company, role }) => {
+    if (role === 'ceo') {
+      socket.join("room_bharath");
+      socket.join("room_shree_ganaapathy");
+      socket.join("room_vel");
+    } else if (company) {
+      socket.join(`room_${normalizeCompany(company)}`);
+    }
+  });
 
   socket.on("join", (userId) => {
     socket.userId = userId;
     socket.join(String(userId));
     onlineUsers.set(String(userId), socket.id);
     io.emit("online_users", Array.from(onlineUsers.keys()));
-    console.log(`User ${userId} joined with socket ${socket.id}`);
   });
 
   socket.on("join_room", (conversationId) => {
     socket.join(String(conversationId));
-    console.log(`Socket ${socket.id} joined room ${conversationId}`);
   });
 
   socket.on("disconnect", async () => {
@@ -100,10 +127,7 @@ io.on("connection", (socket) => {
       io.emit("online_users", Array.from(onlineUsers.keys()));
       try {
         await User.findByIdAndUpdate(socket.userId, { lastActive: new Date() });
-      } catch (err) {
-        console.error("Failed to update lastActive:", err.message);
-      }
-      console.log(`User ${socket.userId} disconnected`);
+      } catch (err) {}
     }
   });
 });
@@ -308,20 +332,11 @@ const getMaterialKind = (company) => normalizeCompany(company) === "shree_ganaap
 const getCylinderKind = (company) => normalizeCompany(company) === "shree_ganaapathy" ? "plastic_cylinder" : "standard";
 
 async function getRequestCompany(req) {
-  const queryCo = req.query?.company || req.body?.company;
-  const normalizedQueryCo = normalizeCompany(queryCo);
-
-  if (['super_admin', 'ceo'].includes(req.user?.role)) {
-    if (normalizedQueryCo && normalizedQueryCo !== 'all') {
-      return normalizedQueryCo;
-    }
+  if (req.user?.role === 'ceo') {
+    const queryCo = req.query?.company || req.body?.company;
+    if (queryCo) return normalizeCompany(queryCo);
   }
-
-  if (req.user?.assignedCompany) return normalizeCompany(req.user.assignedCompany);
-  if (req.user?.company) return normalizeCompany(req.user.company);
-
-  const user = await User.findById(req.user.id).select("company assignedCompany role");
-  return normalizeCompany(user?.assignedCompany || user?.company || "bharath");
+  return normalizeCompany(req.user?.assignedCompany || req.user?.company || "bharath");
 }
 
 function companyQuery(company) {
@@ -455,7 +470,7 @@ app.post("/login", async (req, res) => {
   const assignedCompany = user.assignedCompany || user.company || 'bharath';
   const companyAccess = (user.companyAccess && user.companyAccess.length)
     ? user.companyAccess
-    : (['super_admin', 'ceo'].includes(user.role) ? ['bharath', 'shree_ganaapathy', 'vel'] : [assignedCompany]);
+    : (user.role === 'ceo' ? ['bharath', 'shree_ganaapathy', 'vel'] : [assignedCompany]);
 
   const token = jwt.sign({
     id: user._id,
@@ -512,9 +527,8 @@ const verifyToken = (req, res, next) => {
 // 🔐 ROLE CHECK
 const allowRoles = (...roles) => {
   return (req, res, next) => {
-    // Treat super_admin as admin/ceo level for general route access
     const userRole = req.user.role;
-    if (roles.includes(userRole) || (userRole === 'super_admin' && (roles.includes('admin') || roles.includes('ceo')))) {
+    if (roles.includes(userRole)) {
       return next();
     }
     return res.status(403).json({ error: "Access denied" });
@@ -523,24 +537,57 @@ const allowRoles = (...roles) => {
 
 // 🏢 CHECK COMPANY ACCESS MIDDLEWARE
 const checkCompanyAccess = (req, res, next) => {
-  const userRole = req.user?.role;
-  const companyAccess = (req.user?.companyAccess || []).map(normalizeCompany);
-  const userCompany = normalizeCompany(req.user?.assignedCompany || req.user?.company);
+  const { role, companyAccess, assignedCompany, company } = req.user || {};
+  const userAssignedCo = normalizeCompany(assignedCompany || company || 'bharath');
 
-  if (['super_admin', 'ceo'].includes(userRole)) {
-    return next(); // Full cross-company access
-  }
-
-  const requestedCompany = normalizeCompany(req.query?.company || req.body?.company);
-
-  if (requestedCompany && requestedCompany !== 'all' && requestedCompany !== userCompany) {
-    if (!companyAccess.includes(requestedCompany)) {
-      return res.status(403).json({ error: 'Access denied: not authorized for this company' });
+  if (role === 'ceo') {
+    const requestedCompany = normalizeCompany(req.query?.company || req.body?.company);
+    if (requestedCompany && requestedCompany !== 'all' && Array.isArray(companyAccess) && !companyAccess.includes(requestedCompany)) {
+      return res.status(403).json({ error: 'Invalid company selection' });
     }
+    return next(); // CEO — full cross-company access
   }
 
+  // Normal Admin / Manager / Worker — ALWAYS force assignedCompany server-side!
+  req.query = req.query || {};
+  req.body = req.body || {};
+  req.query.company = userAssignedCo;
+  if (req.body && typeof req.body === 'object') {
+    req.body.company = userAssignedCo;
+  }
   next();
 };
+
+// 🛡️ CHECK EDIT & DELETE PERMISSION MIDDLEWARE (CEO full bypass)
+const checkEditDeletePermission = (req, res, next) => {
+  const role = req.user?.role;
+  if (role === 'ceo') {
+    return next(); // Unrestricted full edit/delete power across all 3 companies
+  }
+  if (['admin', 'manager'].includes(role)) {
+    return next();
+  }
+  return res.status(403).json({ error: 'Access denied: insufficient permissions to edit or delete records.' });
+};
+
+// 📋 AUDIT LOGGING SAFEGUARD HELPER
+async function logAuditAction(userId, userName, role, action, targetModel, targetId, company, details = {}) {
+  try {
+    await AuditLog.create({
+      userId,
+      performedByName: userName || "CEO",
+      role: role || "ceo",
+      action,
+      targetModel,
+      targetId,
+      company: company ? normalizeCompany(company) : "bharath",
+      details,
+      timestamp: new Date()
+    });
+  } catch (err) {
+    console.error("Audit log creation error:", err.message);
+  }
+}
 
 // GET /api/users — List all employees in same company to start a chat with
 app.get("/api/users", verifyToken, async (req, res) => {
@@ -1698,11 +1745,13 @@ app.get("/api/advance/report/export", verifyToken, allowRoles("admin", "ceo"), a
   }
 });
 
-// GET /staff — CEO and Admin can view all company staff profiles
+// GET /staff — CEO and Admin can view staff profiles
 app.get("/staff", verifyToken, allowRoles("admin", "ceo"), async (req, res) => {
   try {
     const company = await getRequestCompany(req);
-    const staff = await User.find({ company }).select("-password").sort({ role: 1, name: 1 });
+    const query = { isDeleted: { $ne: true } };
+    if (company && company !== "all") query.company = company;
+    const staff = await User.find(query).select("-password").sort({ role: 1, name: 1 });
     res.json(staff);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1966,6 +2015,289 @@ app.get("/api/dashboard/summary", verifyToken, async (req, res) => {
   }
 });
 
+// 🏢 CLIENT COMPANIES & CDR SAMPLE LIBRARY ENDPOINTS
+
+// GET /api/client-companies?search=
+app.get("/api/client-companies", verifyToken, async (req, res) => {
+  try {
+    const search = req.query.search || "";
+    const filter = search ? { name: { $regex: search, $options: "i" } } : {};
+    const companies = await ClientCompany.find(filter).sort({ name: 1 }).limit(50);
+    res.json(companies);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/client-companies (Admin & CEO only)
+app.post("/api/client-companies", verifyToken, allowRoles("admin", "ceo"), async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name || !name.trim()) return res.status(400).json({ error: "Company name is required" });
+    const trimmed = name.trim();
+    let company = await ClientCompany.findOne({ name: { $regex: `^${trimmed}$`, $options: "i" } });
+    if (!company) {
+      company = await ClientCompany.create({ name: trimmed, createdBy: req.user._id });
+    }
+    res.status(201).json(company);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/client-companies/:id (Admin & CEO only)
+app.delete("/api/client-companies/:id", verifyToken, allowRoles("admin", "ceo"), async (req, res) => {
+  try {
+    await ClientCompany.findByIdAndDelete(req.params.id);
+    res.json({ message: "Client company deleted" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/client-products?clientCompany=&search=
+app.get("/api/client-products", verifyToken, async (req, res) => {
+  try {
+    const { clientCompany, search } = req.query;
+    const filter = {};
+    if (clientCompany) filter.clientCompany = clientCompany;
+    if (search) filter.name = { $regex: search, $options: "i" };
+
+    const products = await ClientProduct.find(filter).sort({ name: 1 }).limit(100);
+    res.json(products);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/client-products (Admin & CEO only)
+app.post("/api/client-products", verifyToken, allowRoles("admin", "ceo"), async (req, res) => {
+  try {
+    const { clientCompany, name } = req.body;
+    if (!clientCompany || !name || !name.trim()) return res.status(400).json({ error: "Company and Product name are required" });
+    const trimmed = name.trim();
+    let product = await ClientProduct.findOne({ clientCompany, name: { $regex: `^${trimmed}$`, $options: "i" } });
+    if (!product) {
+      product = await ClientProduct.create({ clientCompany, name: trimmed, createdBy: req.user._id });
+    }
+    res.status(201).json(product);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/task-files?clientCompany=&productName=&search= (Everyone can view)
+app.get("/api/task-files", verifyToken, async (req, res) => {
+  try {
+    const { clientCompany, productName, search } = req.query;
+    const filter = {};
+    if (clientCompany) filter.clientCompany = clientCompany;
+    if (productName) filter.productName = productName;
+    if (search) filter.fileName = { $regex: search, $options: "i" };
+
+    const files = await TaskFile.find(filter).sort({ uploadedAt: -1 });
+    res.json(files);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Multer storage for CDR samples and ZIP files
+const sampleStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = './uploads/samples';
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    cb(null, `sample-${Date.now()}-${Math.random().toString(36).substring(7)}${path.extname(file.originalname)}`);
+  }
+});
+const sampleUpload = multer({ storage: sampleStorage });
+
+// POST /api/task-files/upload-folder (Admin & CEO only — 2-Level parsing Company/Product/sample)
+app.post("/api/task-files/upload-folder", verifyToken, allowRoles("admin", "ceo"), sampleUpload.array("files", 200), async (req, res) => {
+  try {
+    const files = req.files || [];
+    let relativePaths = req.body.relativePaths;
+    if (typeof relativePaths === 'string') {
+      try { relativePaths = JSON.parse(relativePaths); } catch { relativePaths = [relativePaths]; }
+    }
+    if (!Array.isArray(relativePaths)) relativePaths = [];
+
+    const createdCompanies = new Set();
+    const createdProducts = new Set();
+    const processedFiles = [];
+    const host = req.protocol + "://" + req.get("host");
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const relPath = relativePaths[i] || file.originalname;
+      const parts = relPath.split(/[/\\]/);
+
+      let companyName = parts.length > 1 ? parts[0] : (req.body.clientCompany || "Default Client");
+      let productName = parts.length > 2 ? parts[1] : (req.body.productName || "General Product");
+
+      companyName = companyName.trim();
+      productName = productName.trim();
+
+      let companyObj = await ClientCompany.findOne({ name: { $regex: `^${companyName}$`, $options: "i" } });
+      if (!companyObj) {
+        companyObj = await ClientCompany.create({ name: companyName, createdBy: req.user._id });
+      }
+      createdCompanies.add(companyObj.name);
+
+      let productObj = await ClientProduct.findOne({ clientCompany: companyObj.name, name: { $regex: `^${productName}$`, $options: "i" } });
+      if (!productObj) {
+        productObj = await ClientProduct.create({ clientCompany: companyObj.name, name: productName, createdBy: req.user._id });
+      }
+      createdProducts.add(`${companyObj.name} > ${productObj.name}`);
+
+      const relFileUrl = `${host}/${file.path.replace(/\\/g, '/')}`;
+
+      const taskFile = await TaskFile.create({
+        clientCompany: companyObj.name,
+        productName: productObj.name,
+        fileName: file.originalname,
+        originalFileUrl: relFileUrl,
+        status: "processing",
+        uploadedBy: req.user._id
+      });
+
+      processCdrConversion(taskFile._id, file.path, host);
+      processedFiles.push(taskFile);
+    }
+
+    res.json({
+      message: `Uploaded ${processedFiles.length} files across ${createdCompanies.size} companies & ${createdProducts.size} products. Conversion running in background.`,
+      companies: Array.from(createdCompanies),
+      productsCount: createdProducts.size,
+      files: processedFiles
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/task-files/upload-zip (Admin & CEO only — 2-Level parsing Company/Product/sample)
+app.post("/api/task-files/upload-zip", verifyToken, allowRoles("admin", "ceo"), sampleUpload.single("zipFile"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "ZIP file is required" });
+
+    const zipPath = req.file.path;
+    const zip = new AdmZip(zipPath);
+    const zipEntries = zip.getEntries();
+
+    const extractDir = path.join('./uploads/samples', `extract-${Date.now()}`);
+    fs.mkdirSync(extractDir, { recursive: true });
+
+    const createdCompanies = new Set();
+    const createdProducts = new Set();
+    const processedFiles = [];
+    const host = req.protocol + "://" + req.get("host");
+
+    for (const entry of zipEntries) {
+      if (entry.isDirectory) continue;
+
+      const entryName = entry.entryName;
+      const parts = entryName.split('/');
+      let companyName = parts.length > 1 ? parts[0] : (req.body.clientCompany || "Default Client");
+      let productName = parts.length > 2 ? parts[1] : (req.body.productName || "General Product");
+      const fileName = path.basename(entryName);
+
+      if (fileName.startsWith('.') || !fileName) continue;
+
+      companyName = companyName.trim();
+      productName = productName.trim();
+
+      let companyObj = await ClientCompany.findOne({ name: { $regex: `^${companyName}$`, $options: "i" } });
+      if (!companyObj) {
+        companyObj = await ClientCompany.create({ name: companyName, createdBy: req.user._id });
+      }
+      createdCompanies.add(companyObj.name);
+
+      let productObj = await ClientProduct.findOne({ clientCompany: companyObj.name, name: { $regex: `^${productName}$`, $options: "i" } });
+      if (!productObj) {
+        productObj = await ClientProduct.create({ clientCompany: companyObj.name, name: productName, createdBy: req.user._id });
+      }
+      createdProducts.add(`${companyObj.name} > ${productObj.name}`);
+
+      const targetPath = path.join(extractDir, `${Date.now()}-${fileName}`);
+      fs.writeFileSync(targetPath, entry.getData());
+
+      const relFileUrl = `${host}/${targetPath.replace(/\\/g, '/')}`;
+
+      const taskFile = await TaskFile.create({
+        clientCompany: companyObj.name,
+        productName: productObj.name,
+        fileName: fileName,
+        originalFileUrl: relFileUrl,
+        status: "processing",
+        uploadedBy: req.user._id
+      });
+
+      processCdrConversion(taskFile._id, targetPath, host);
+      processedFiles.push(taskFile);
+    }
+
+    res.json({
+      message: `Extracted ${processedFiles.length} files for ${createdCompanies.size} companies & ${createdProducts.size} products. Conversion running in background.`,
+      companies: Array.from(createdCompanies),
+      productsCount: createdProducts.size,
+      files: processedFiles
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/task-files/:id (Admin & CEO only)
+app.delete("/api/task-files/:id", verifyToken, allowRoles("admin", "ceo"), async (req, res) => {
+  try {
+    await TaskFile.findByIdAndDelete(req.params.id);
+    res.json({ message: "Task file deleted" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/task-files/:id/download — download original file
+app.get("/api/task-files/:id/download", verifyToken, async (req, res) => {
+  try {
+    const fileRecord = await TaskFile.findById(req.params.id);
+    if (!fileRecord) return res.status(404).json({ error: "File not found" });
+
+    const urlParts = fileRecord.originalFileUrl.split('/');
+    const relPath = urlParts.slice(3).join('/');
+    const localFilePath = path.resolve(relPath);
+
+    if (fs.existsSync(localFilePath)) {
+      return res.download(localFilePath, fileRecord.fileName);
+    }
+    return res.redirect(fileRecord.originalFileUrl);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/tasks/:id/reference-file — assign reference sample
+app.put("/api/tasks/:id/reference-file", verifyToken, allowRoles("admin", "manager", "ceo"), async (req, res) => {
+  try {
+    const { referenceFileId, clientCompany } = req.body;
+    const task = await Task.findById(req.params.id);
+    if (!task) return res.status(404).json({ error: "Task not found" });
+
+    if (referenceFileId) task.referenceFileId = referenceFileId;
+    if (clientCompany) task.clientCompany = clientCompany;
+
+    await task.save();
+    const updated = await Task.findById(task._id).populate("referenceFileId");
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET all tasks (supports /api/tasks and assignedTo filtering)
 app.get(["/tasks", "/api/tasks"], verifyToken, async (req, res) => {
   try {
@@ -1986,7 +2318,7 @@ app.get(["/tasks", "/api/tasks"], verifyToken, async (req, res) => {
       }
     }
 
-    const tasks = await Task.find(query).sort({ createdAt: -1 });
+    const tasks = await Task.find(query).populate("referenceFileId").sort({ createdAt: -1 });
     res.json(tasks);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2015,7 +2347,9 @@ app.post("/tasks", verifyToken, allowRoles("admin", "manager", "ceo"), async (re
       cylinder_barcode,
       worker_name: worker_name.trim(),
       colourCount: parsedColourCount,
-      company
+      company,
+      clientCompany: req.body.clientCompany,
+      referenceFileId: req.body.referenceFileId || undefined
     });
 
     await task.save();
@@ -2127,7 +2461,13 @@ app.get("/foils", verifyToken, allowRoles("admin", "manager", "ceo"), async (req
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 200;
     const skip = (page - 1) * limit;
-    const foils = company === "vel" ? [] : await Foil.find({ company }).skip(skip).limit(limit).lean();
+
+    const query = { isDeleted: { $ne: true } };
+    if (company && company !== "all") {
+      query.company = company;
+    }
+
+    const foils = await Foil.find(query).skip(skip).limit(limit).lean();
     res.json(foils);
   } catch (err) {
     res.status(500).send(err.message);
@@ -2136,11 +2476,13 @@ app.get("/foils", verifyToken, allowRoles("admin", "manager", "ceo"), async (req
 
 // ✅ GET FOIL BY BARCODE
 app.get("/foils/barcode/:barcode", verifyToken, allowRoles("admin", "manager", "ceo"), async (req, res) => {
-
   try {
     const company = await getRequestCompany(req);
-    const foil = await Foil.findOne({ barcode: req.params.barcode, company });
-    if (!foil) return res.status(404).send("Foil not found or not in your company");
+    const query = { barcode: req.params.barcode, isDeleted: { $ne: true } };
+    if (company && company !== "all") query.company = company;
+
+    const foil = await Foil.findOne(query);
+    if (!foil) return res.status(404).send("Foil not found");
     res.json(foil);
   } catch (err) {
     res.status(500).send(err.message);
@@ -2151,46 +2493,8 @@ app.get("/foils/barcode/:barcode", verifyToken, allowRoles("admin", "manager", "
 app.put("/foils/:id", verifyToken, allowRoles("admin", "manager", "ceo"), async (req, res) => {
   try {
     const { type, size, weight } = req.body;
-    const company = await getRequestCompany(req);
-    const materialKind = getMaterialKind(company);
-
-    if (company === "vel") {
-      return res.status(403).send("Vel Gravure uses cylinder stock only");
-    }
-
-    const allowedTypes = materialKind === "plastic"
-      ? ["wrapper", "pouch", "laminated", "roll"]
-      : ["blister", "alualu"];
-
-    if (!allowedTypes.includes(type)) {
-      return res.status(400).send(`Invalid type. Allowed values: ${allowedTypes.join(", ")}`);
-    }
-
-    if (!type || !size || !weight) {
-      return res.status(400).send("Type, Size, and Weight are required");
-    }
-
-    const foil = await Foil.findById(req.params.id);
-    if (!foil) return res.status(404).send("Foil not found");
-    if (foil.company && foil.company !== company) return res.status(403).send("Access denied");
-
-    const before = foil.toObject();
-    foil.company = foil.company || company;
-    foil.materialKind = materialKind;
-    foil.type = type;
-    foil.size = size;
-    setFoilBalance(foil, Number(weight));
-
-    await foil.save();
-    await createAuditLog({
-      req,
-      action: "edit",
-      itemType: "foil",
-      before,
-      after: foil.toObject()
-    });
-
-    res.json({ message: "Foil updated successfully", foil });
+    const foil = await Foil.findByIdAndUpdate(req.params.id, { type, size, weight }, { new: true });
+    res.json(foil);
   } catch (err) {
     res.status(500).send("Error: " + err.message);
   }
@@ -2199,22 +2503,21 @@ app.put("/foils/:id", verifyToken, allowRoles("admin", "manager", "ceo"), async 
 // ❌ DELETE FOIL
 app.delete("/foils/:id", verifyToken, allowRoles("admin", "manager", "ceo"), async (req, res) => {
   try {
-    const company = await getRequestCompany(req);
     const foil = await Foil.findById(req.params.id);
     if (!foil) return res.status(404).send("Foil not found");
-    if (foil.company && foil.company !== company) return res.status(403).send("Access denied");
-    
-    await foil.deleteOne();
 
-    await createAuditLog({
-      req,
-      action: "delete",
-      itemType: "foil",
-      before: foil.toObject(),
-      after: null
-    });
+    if (req.user.role !== 'ceo') {
+      const company = await getRequestCompany(req);
+      if (foil.company && foil.company !== company) return res.status(403).send("Access denied");
+    }
 
-    res.json({ message: "Foil deleted successfully" });
+    foil.isDeleted = true;
+    foil.deletedBy = req.user.id;
+    foil.deletedAt = new Date();
+    await foil.save();
+
+    await logAuditAction(req.user.id, req.user.name, req.user.role, 'delete', 'Foil', foil._id, foil.company, { type: foil.type, size: foil.size });
+    res.json({ message: "Foil soft-deleted successfully" });
   } catch (err) {
     res.status(500).send("Error: " + err.message);
   }
@@ -2227,7 +2530,13 @@ app.get("/cylinders", verifyToken, allowRoles("admin", "manager", "ceo"), async 
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 200;
     const skip = (page - 1) * limit;
-    const cylinders = await Cylinder.find({ company }).skip(skip).limit(limit).lean();
+
+    const query = { isDeleted: { $ne: true } };
+    if (company && company !== "all") {
+      query.company = company;
+    }
+
+    const cylinders = await Cylinder.find(query).skip(skip).limit(limit).lean();
     res.json(cylinders);
   } catch (err) {
     res.status(500).send(err.message);
@@ -2276,22 +2585,21 @@ app.put("/cylinders/:id", verifyToken, allowRoles("admin", "manager", "ceo"), as
 // ❌ DELETE CYLINDER
 app.delete("/cylinders/:id", verifyToken, allowRoles("admin", "manager", "ceo"), async (req, res) => {
   try {
-    const company = await getRequestCompany(req);
     const cylinder = await Cylinder.findById(req.params.id);
     if (!cylinder) return res.status(404).send("Cylinder not found");
-    if (cylinder.company && cylinder.company !== company) return res.status(403).send("Access denied");
-    
-    await cylinder.deleteOne();
 
-    await createAuditLog({
-      req,
-      action: "delete",
-      itemType: "cylinder",
-      before: cylinder.toObject(),
-      after: null
-    });
+    if (req.user.role !== 'ceo') {
+      const company = await getRequestCompany(req);
+      if (cylinder.company && cylinder.company !== company) return res.status(403).send("Access denied");
+    }
 
-    res.json({ message: "Cylinder deleted successfully" });
+    cylinder.isDeleted = true;
+    cylinder.deletedBy = req.user.id;
+    cylinder.deletedAt = new Date();
+    await cylinder.save();
+
+    await logAuditAction(req.user.id, req.user.name, req.user.role, 'delete', 'Cylinder', cylinder._id, cylinder.company, { productName: cylinder.product_name });
+    res.json({ message: "Cylinder soft-deleted successfully" });
   } catch (err) {
     res.status(500).send("Error: " + err.message);
   }
@@ -2414,6 +2722,8 @@ app.post('/tasks-create', verifyToken, allowRoles("admin", "manager", "ceo"), ta
       foil_type: req.body.foil_type,
       worker_name: worker_name.trim(),
       image_path,
+      clientCompany: req.body.clientCompany,
+      referenceFileId: req.body.referenceFileId || undefined,
 
       // Use assigned barcode for validation (security)
       assigned_foil_qrPayload: assignedFoilQrPayload || undefined
@@ -2933,21 +3243,17 @@ async function getUserRoleByName(name, company) {
 }
 
 // GET all staff for the company (for attendance dropdown)
-// Returns workers, managers — CEO sees everyone; Admin sees manager+worker; Manager sees worker only
-app.get("/workers", verifyToken, allowRoles("admin", "manager", "ceo"), async (req, res) => {
+app.get(["/workers", "/api/workers"], verifyToken, allowRoles("admin", "manager", "ceo"), async (req, res) => {
   try {
     const company = await getRequestCompany(req);
     const requesterRole = req.user.role;
 
     let roleFilter;
     if (requesterRole === "ceo") {
-      // CEO can see all staff
       roleFilter = { $in: ["worker", "manager", "admin"] };
     } else if (requesterRole === "admin") {
-      // Admin can see workers and managers (not CEO)
       roleFilter = { $in: ["worker", "manager"] };
     } else {
-      // Manager can see workers only
       roleFilter = "worker";
     }
 
@@ -2958,9 +3264,8 @@ app.get("/workers", verifyToken, allowRoles("admin", "manager", "ceo"), async (r
   }
 });
 
-// POST /attendance - Mark attendance
-// Admin/Manager/CEO can mark, but only for users they have authority over
-app.post("/attendance", verifyToken, async (req, res) => {
+// POST /attendance & /api/attendance (Mark attendance / check-in / check-out)
+app.post(["/attendance", "/api/attendance", "/api/attendance/check-in", "/api/attendance/check-out"], verifyToken, async (req, res) => {
   try {
     const { workerName, date, status, notes, checkIn, checkOut, extraHours } = req.body;
     const company = await getRequestCompany(req);
@@ -3119,9 +3424,8 @@ app.post("/attendance", verifyToken, async (req, res) => {
   }
 });
 
-// PUT /attendance/:id - Edit attendance
-// CEO: can edit all. Admin: can edit manager+worker only. Manager: NO edit access.
-app.put("/attendance/:id", verifyToken, async (req, res) => {
+// PUT /attendance/:id & /api/attendance/:id - Edit attendance
+app.put(["/attendance/:id", "/api/attendance/:id"], verifyToken, async (req, res) => {
   try {
     const requesterRole = req.user.role;
     if (requesterRole !== "admin" && requesterRole !== "ceo") {
@@ -3182,8 +3486,8 @@ app.put("/attendance/:id", verifyToken, async (req, res) => {
   }
 });
 
-// GET /attendance
-app.get("/attendance", verifyToken, async (req, res) => {
+// GET /attendance & /api/attendance
+app.get(["/attendance", "/api/attendance"], verifyToken, async (req, res) => {
   try {
     const company = await getRequestCompany(req);
     const { date, from, to, workerName, status, search, empNo } = req.query;
@@ -3963,7 +4267,471 @@ app.get(["/dispatch/report/export", "/api/dispatch/report/export"], verifyToken,
   }
 });
 
+// 🔄 PAGINATION HELPER
+function getPagination(req) {
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const limit = Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 20));
+  const skip = (page - 1) * limit;
+  return { page, limit, skip };
+}
+
+function broadcastCompanyEvent(company, event, data) {
+  if (!io) return;
+  const roomName = `room_${normalizeCompany(company)}`;
+  io.to(roomName).emit(event, data);
+}
+
+// 🔐 AUTH REFRESH & MANDATORY PASSWORD CHANGE
+app.post("/api/auth/refresh", async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+    if (!refreshToken) return res.status(401).json({ error: "Refresh Token required" });
+
+    const decoded = jwt.verify(refreshToken, SECRET);
+    const user = await User.findById(decoded.id);
+
+    if (!user || user.isDeleted || user.refreshToken !== refreshToken) {
+      return res.status(403).json({ error: "Invalid refresh token" });
+    }
+
+    const newAccessToken = jwt.sign({
+      id: user._id,
+      role: user.role,
+      assignedCompany: user.assignedCompany,
+      companyAccess: user.companyAccess
+    }, SECRET, { expiresIn: "1h" });
+
+    res.json({ token: newAccessToken });
+  } catch (err) {
+    res.status(403).json({ error: "Invalid or expired refresh token" });
+  }
+});
+
+app.post("/api/auth/change-password", verifyToken, async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    if (!newPassword || newPassword.length < 8) {
+      return res.status(400).json({ error: "New password must be at least 8 characters long." });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    if (oldPassword) {
+      const match = await bcrypt.compare(oldPassword, user.password);
+      if (!match) return res.status(401).json({ error: "Current password does not match" });
+    }
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    user.isFirstLogin = false;
+    await user.save();
+
+    res.json({ message: "Password updated successfully. First login requirement completed." });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 🏷️ ==================== PRODUCT MASTER ENDPOINTS ====================
+app.post("/api/products", verifyToken, checkCompanyAccess, async (req, res) => {
+  try {
+    const requestCompany = await getRequestCompany(req);
+    const company = normalizeCompany(req.body.company) || requestCompany;
+    const { productName, size, weightKg, numberOfColors } = req.body;
+
+    if (!productName) {
+      return res.status(400).json({ error: "Product Name is required." });
+    }
+
+    const product = new Product({
+      company,
+      productName,
+      size: size || "",
+      weightKg: weightKg ? Number(weightKg) : 0,
+      numberOfColors: numberOfColors ? Number(numberOfColors) : 1,
+      createdBy: req.user.id
+    });
+
+    await product.save();
+    broadcastCompanyEvent(company, "product_added", product);
+
+    res.status(201).json({ message: "✅ Product added to Product Master", product });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/products", verifyToken, checkCompanyAccess, async (req, res) => {
+  try {
+    const requestCompany = await getRequestCompany(req);
+    const company = req.query.company ? normalizeCompany(req.query.company) : requestCompany;
+    const { page, limit, skip } = getPagination(req);
+
+    const query = { isDeleted: { $ne: true } };
+    if (company && company !== "all") {
+      query.company = company;
+    }
+
+    const [products, total] = await Promise.all([
+      Product.find(query).sort({ productName: 1 }).skip(skip).limit(limit).lean(),
+      Product.countDocuments(query)
+    ]);
+
+    res.json({
+      data: products,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit) || 1
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/api/products/:id", verifyToken, checkCompanyAccess, async (req, res) => {
+  try {
+    const { productName, size, weightKg, numberOfColors, isActive } = req.body;
+    const product = await Product.findByIdAndUpdate(
+      req.params.id,
+      {
+        ...(productName && { productName }),
+        ...(size !== undefined && { size }),
+        ...(weightKg !== undefined && { weightKg: Number(weightKg) }),
+        ...(numberOfColors !== undefined && { numberOfColors: Number(numberOfColors) }),
+        ...(isActive !== undefined && { isActive: Boolean(isActive) })
+      },
+      { new: true }
+    );
+
+    if (!product) return res.status(404).json({ error: "Product not found" });
+
+    broadcastCompanyEvent(product.company, "product_updated", product);
+    res.json({ message: "Product updated successfully", product });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/api/products/:id", verifyToken, checkCompanyAccess, checkEditDeletePermission, async (req, res) => {
+  try {
+    const product = await Product.findByIdAndUpdate(
+      req.params.id,
+      {
+        isDeleted: true,
+        deletedBy: req.user.id,
+        deletedAt: new Date()
+      },
+      { new: true }
+    );
+
+    if (!product) return res.status(404).json({ error: "Product not found" });
+
+    await logAuditAction(req.user.id, req.user.name, req.user.role, 'delete', 'Product', product._id, product.company, { productName: product.productName });
+    broadcastCompanyEvent(product.company, "product_deleted", { id: req.params.id });
+    res.json({ message: "Product soft-deleted successfully" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 💰 ==================== INCOME & EXPENSE FINANCIAL TRACKING ====================
+app.post("/api/transactions", verifyToken, checkCompanyAccess, async (req, res) => {
+  try {
+    const requestCompany = await getRequestCompany(req);
+    const company = normalizeCompany(req.body.company) || requestCompany;
+    const { type, category, amount, description, date, paymentMethod, relatedDispatchId } = req.body;
+
+    if (!type || !category || !amount) {
+      return res.status(400).json({ error: "Type, category, and amount are required." });
+    }
+
+    const transaction = new Transaction({
+      company,
+      type,
+      category,
+      amount: Number(amount),
+      description: description || "",
+      date: date ? new Date(date) : new Date(),
+      addedBy: req.user.id,
+      addedByName: req.user.name || "Admin",
+      paymentMethod: paymentMethod || "online",
+      relatedDispatchId
+    });
+
+    await transaction.save();
+    broadcastCompanyEvent(company, "transaction_created", transaction);
+
+    res.status(201).json({ message: "✅ Transaction recorded successfully", transaction });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/transactions", verifyToken, checkCompanyAccess, async (req, res) => {
+  try {
+    const requestCompany = await getRequestCompany(req);
+    const company = req.query.company ? normalizeCompany(req.query.company) : requestCompany;
+    const { type, from, to } = req.query;
+    const { page, limit, skip } = getPagination(req);
+
+    const query = { isDeleted: { $ne: true } };
+    if (company && company !== "all") {
+      query.company = company;
+    }
+    if (type) {
+      query.type = type;
+    }
+    if (from || to) {
+      query.date = {};
+      if (from) query.date.$gte = new Date(from);
+      if (to) {
+        const toDate = new Date(to);
+        toDate.setHours(23, 59, 59, 999);
+        query.date.$lte = toDate;
+      }
+    }
+
+    const [transactions, total] = await Promise.all([
+      Transaction.find(query).sort({ date: -1 }).skip(skip).limit(limit).lean(),
+      Transaction.countDocuments(query)
+    ]);
+
+    res.json({
+      data: transactions,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit) || 1
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/transactions/summary", verifyToken, checkCompanyAccess, async (req, res) => {
+  try {
+    const requestCompany = await getRequestCompany(req);
+    const company = req.query.company ? normalizeCompany(req.query.company) : requestCompany;
+    const period = req.query.period || "month";
+
+    const query = { isDeleted: { $ne: true } };
+    if (company && company !== "all") {
+      query.company = company;
+    }
+
+    const now = new Date();
+    if (period === "day") {
+      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      query.date = { $gte: startOfDay, $lte: endOfDay };
+    } else {
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      query.date = { $gte: startOfMonth, $lte: endOfMonth };
+    }
+
+    const transactions = await Transaction.find(query).lean();
+
+    let totalIncome = 0;
+    let totalExpense = 0;
+    const categoryTotals = {};
+
+    transactions.forEach(t => {
+      if (t.type === "income") {
+        totalIncome += Number(t.amount || 0);
+      } else {
+        totalExpense += Number(t.amount || 0);
+      }
+      categoryTotals[t.category] = (categoryTotals[t.category] || 0) + Number(t.amount || 0);
+    });
+
+    const netProfit = totalIncome - totalExpense;
+
+    res.json({
+      company,
+      period,
+      totalIncome,
+      totalExpense,
+      netProfit,
+      categoryTotals,
+      transactionCount: transactions.length
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/transactions/report/export", verifyToken, checkCompanyAccess, async (req, res) => {
+  try {
+    const requestCompany = await getRequestCompany(req);
+    const company = req.query.company ? normalizeCompany(req.query.company) : requestCompany;
+    const format = (req.query.format || "excel").toLowerCase();
+    const { from, to } = req.query;
+
+    const query = { isDeleted: { $ne: true } };
+    if (company && company !== "all") query.company = company;
+
+    if (from || to) {
+      query.date = {};
+      if (from) query.date.$gte = new Date(from);
+      if (to) {
+        const toDate = new Date(to);
+        toDate.setHours(23, 59, 59, 999);
+        query.date.$lte = toDate;
+      }
+    }
+
+    const items = await Transaction.find(query).sort({ date: -1 }).lean();
+
+    let totalIncome = 0;
+    let totalExpense = 0;
+    items.forEach(t => {
+      if (t.type === "income") totalIncome += Number(t.amount || 0);
+      else totalExpense += Number(t.amount || 0);
+    });
+    const netProfit = totalIncome - totalExpense;
+
+    if (format === "excel") {
+      const workbook = new ExcelJS.Workbook();
+      const ws = workbook.addWorksheet("P&L Report");
+
+      ws.mergeCells("A1:G1");
+      ws.getCell("A1").value = `PROFIT & LOSS REPORT — ${company.toUpperCase()}`;
+      ws.getCell("A1").font = { bold: true, size: 14 };
+
+      ws.addRow([]);
+      ws.addRow(["Date", "Type", "Category", "Description", "Payment Method", "Amount (INR)", "Added By"]).font = { bold: true };
+
+      items.forEach(t => {
+        ws.addRow([
+          new Date(t.date).toLocaleDateString(),
+          t.type.toUpperCase(),
+          t.category,
+          t.description || "-",
+          t.paymentMethod || "online",
+          t.amount,
+          t.addedByName || "System"
+        ]);
+      });
+
+      ws.addRow([]);
+      ws.addRow(["SUMMARY TOTALS"]).font = { bold: true };
+      ws.addRow(["Total Income:", totalIncome]);
+      ws.addRow(["Total Expenses:", totalExpense]);
+      ws.addRow(["Net Profit / Loss:", netProfit]);
+
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="PnL_Report_${company}.xlsx"`);
+      await workbook.xlsx.write(res);
+      return res.end();
+    } else {
+      const doc = new PDFDocument({ margin: 30 });
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="PnL_Report_${company}.pdf"`);
+      doc.pipe(res);
+
+      doc.fontSize(16).text(`PROFIT & LOSS STATEMENT`, { align: 'center' });
+      doc.fontSize(12).text(`Company: ${company.toUpperCase()}`, { align: 'center' });
+      doc.moveDown();
+
+      doc.fontSize(11).text(`Total Income: INR ${totalIncome}`);
+      doc.fontSize(11).text(`Total Expenses: INR ${totalExpense}`);
+      doc.fontSize(12).text(`Net Profit / Loss: INR ${netProfit}`);
+      doc.end();
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// 5️⃣ UPDATE DISPATCH STATUS (PUT /api/dispatch/:id/status)
+app.put(["/dispatch/:id/status", "/api/dispatch/:id/status"], verifyToken, checkCompanyAccess, async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!status) return res.status(400).json({ error: "status is required" });
+    const doc = await Dispatch.findByIdAndUpdate(req.params.id, { status }, { new: true });
+    if (!doc) return res.status(404).json({ error: "Dispatch not found" });
+    res.json({ message: "Dispatch status updated", dispatch: doc });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// 6️⃣ EDIT DISPATCH RECORD (PUT /api/dispatch/:id)
+app.put(["/dispatch/:id", "/api/dispatch/:id"], verifyToken, checkCompanyAccess, async (req, res) => {
+  try {
+    const allowedFields = ["productName","quantity","destinationCompany","deliveryMethod","remarks","dispatchDate","status"];
+    const update = {};
+    allowedFields.forEach(f => { if (req.body[f] !== undefined) update[f] = req.body[f]; });
+    const doc = await Dispatch.findByIdAndUpdate(req.params.id, update, { new: true });
+    if (!doc) return res.status(404).json({ error: "Dispatch not found" });
+    res.json({ message: "Dispatch updated", dispatch: doc });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// 7️⃣ DELETE DISPATCH RECORD (DELETE /api/dispatch/:id)
+app.delete(["/dispatch/:id", "/api/dispatch/:id"], verifyToken, checkCompanyAccess, async (req, res) => {
+  try {
+    const doc = await Dispatch.findByIdAndDelete(req.params.id);
+    if (!doc) return res.status(404).json({ error: "Dispatch not found" });
+    res.json({ message: "Dispatch deleted" });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// 💰 EDIT TRANSACTION (PUT /api/transactions/:id)
+app.put("/api/transactions/:id", verifyToken, checkCompanyAccess, async (req, res) => {
+  try {
+    const { type, category, amount, description, date, paymentMethod } = req.body;
+    const update = {};
+    if (type) update.type = type;
+    if (category) update.category = category;
+    if (amount !== undefined) update.amount = Number(amount);
+    if (description !== undefined) update.description = description;
+    if (date) update.date = new Date(date);
+    if (paymentMethod) update.paymentMethod = paymentMethod;
+    const tx = await Transaction.findByIdAndUpdate(req.params.id, update, { new: true });
+    if (!tx) return res.status(404).json({ error: "Transaction not found" });
+    res.json({ message: "Transaction updated", transaction: tx });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// 💰 DELETE TRANSACTION (DELETE /api/transactions/:id)
+app.delete("/api/transactions/:id", verifyToken, checkCompanyAccess, async (req, res) => {
+  try {
+    const tx = await Transaction.findByIdAndDelete(req.params.id);
+    if (!tx) return res.status(404).json({ error: "Transaction not found" });
+    res.json({ message: "Transaction deleted" });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// 👥 EDIT STAFF USER (PUT /staff/:id)
+app.put("/staff/:id", verifyToken, allowRoles("admin", "ceo"), async (req, res) => {
+  try {
+    const { name, role, assignedCompany, phone, department, salaryRate, salaryType, employmentType } = req.body;
+    const update = {};
+    if (name)             update.name             = name;
+    if (role)             update.role             = role;
+    if (assignedCompany)  update.assignedCompany  = normalizeCompany(assignedCompany);
+    if (phone)            update.phone            = phone;
+    if (department)       update.department       = department;
+    if (salaryRate !== undefined) update.salaryRate = Number(salaryRate);
+    if (salaryType)       update.salaryType       = salaryType;
+    if (employmentType)   update.employmentType   = employmentType;
+    const user = await User.findByIdAndUpdate(req.params.id, update, { new: true }).select("-password");
+    if (!user) return res.status(404).json({ error: "Staff not found" });
+    res.json({ message: "Staff updated", user });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// 👥 DELETE STAFF USER (DELETE /staff/:id)
+app.delete("/staff/:id", verifyToken, allowRoles("admin", "ceo"), async (req, res) => {
+  try {
+    const user = await User.findByIdAndDelete(req.params.id);
+    if (!user) return res.status(404).json({ error: "Staff not found" });
+    res.json({ message: "Staff deleted" });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 const PORT = process.env.PORT || 5001;
+
 
 connectDatabase().then(() => {
   server.listen(PORT, () => console.log(`Server running on ${PORT}`));

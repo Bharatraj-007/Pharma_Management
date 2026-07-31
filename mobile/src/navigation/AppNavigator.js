@@ -11,9 +11,11 @@ import * as Device from 'expo-device';
 
 import { AuthContext } from './AuthContext';
 import { MENU_ITEMS, PERMISSIONS, COMPANY_NAMES } from '../utils/permissions';
+import Constants from 'expo-constants';
 import { colors, spacing, fontSize, radius } from '../styles/theme';
 import API_BASE_URL from '../config';
 import NotificationBell from '../components/NotificationBell';
+import WebLayout from '../frontend-webui/components/WebLayout.web';
 
 // ── Auth Screens ──────────────────────────────────────────────────────────────
 import LoginScreen     from '../screens/auth/LoginScreen';
@@ -22,6 +24,7 @@ import VerifyOTPScreen from '../screens/auth/VerifyOTPScreen';
 
 // ── Main Screens ──────────────────────────────────────────────────────────────
 import DashboardRouter        from '../screens/dashboard/DashboardRouter';
+import ClientCompanyScreen    from '../screens/ClientCompanyScreen';
 import TasksScreen            from '../screens/TasksScreen';
 import InventoryScreen        from '../screens/InventoryScreen';
 import AttendanceScreen       from '../screens/AttendanceScreen';
@@ -34,6 +37,9 @@ import AuditLogsScreen        from '../screens/AuditLogsScreen';
 import SalaryManagementScreen from '../screens/SalaryManagementScreen';
 import ProfileScreen          from '../screens/ProfileScreen';
 import DispatchScreen         from '../screens/DispatchScreen';
+import ProductMasterScreen   from '../screens/ProductMasterScreen';
+import FinanceScreen         from '../screens/FinanceScreen';
+import AdvanceSalaryScreen   from '../screens/AdvanceSalaryScreen';
 
 // ── Notification handler — only set in custom dev client, NOT Expo Go ─────────
 // expo-notifications push functionality was removed from Expo Go in SDK 53.
@@ -100,7 +106,12 @@ async function registerForPushNotifications() {
 
   // Get Expo push token
   try {
-    const tokenData = await Notifications.getExpoPushTokenAsync();
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+    if (!projectId || projectId === '00000000-0000-0000-0000-000000000000') {
+      console.log('Push token info: Skipping push token fetch (no valid EAS projectId configured in app.json).');
+      return null;
+    }
+    const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
     return tokenData.data;
   } catch (err) {
     console.log('Push token error (normal in dev client without projectId):', err.message);
@@ -208,9 +219,13 @@ function MainDrawer() {
       }}
     >
       <Drawer.Screen name="Dashboard"        component={DashboardRouter}        options={{ title: '📊 Dashboard' }} />
+      <Drawer.Screen name="ClientCompany"    component={ClientCompanyScreen}    options={{ title: '🏢 Client Company' }} />
       <Drawer.Screen name="Tasks"            component={TasksScreen}            options={{ title: '📋 Tasks' }} />
       <Drawer.Screen name="Inventory"        component={InventoryScreen}        options={{ title: '📦 Inventory' }} />
+      <Drawer.Screen name="ProductMaster"    component={ProductMasterScreen}    options={{ title: '🏷️ Product Master' }} />
       <Drawer.Screen name="Dispatch"         component={DispatchScreen}         options={{ title: '🚚 Dispatch' }} />
+      <Drawer.Screen name="Finance"          component={FinanceScreen}          options={{ title: '💵 Finance & P&L' }} />
+      <Drawer.Screen name="AdvanceSalary"    component={AdvanceSalaryScreen}    options={{ title: '💵 Advance Salary' }} />
       <Drawer.Screen name="Attendance"       component={AttendanceScreen}       options={{ title: '⏱️ Attendance' }} />
       <Drawer.Screen name="Leave"            component={LeaveScreen}            options={{ title: '🗓️ Leave' }} />
       <Drawer.Screen name="Reports"          component={ReportsScreen}          options={{ title: '📈 Reports' }} />
@@ -235,9 +250,72 @@ function AuthStack() {
   );
 }
 
+// ── Web Main Container ────────────────────────────────────────────────────────
+function WebMainContainer({ session, signOut, setActiveCompany }) {
+  const [activeRoute, setActiveRoute] = React.useState('dashboard');
+
+  const handleNavigate = (routeId) => {
+    setActiveRoute(routeId);
+  };
+
+  const handleCompanyChange = (coId) => {
+    if (setActiveCompany) setActiveCompany(coId);
+  };
+
+  const renderWebScreen = () => {
+    switch (activeRoute) {
+      case 'dashboard':
+        return <DashboardRouter onNavigate={handleNavigate} />;
+      case 'clientCompany':
+        return <ClientCompanyScreen />;
+      case 'tasks':
+        return <TasksScreen />;
+      case 'stock':
+      case 'inventory':
+        return <InventoryScreen />;
+      case 'productMaster':
+        return <ProductMasterScreen />;
+      case 'dispatch':
+        return <DispatchScreen />;
+      case 'finance':
+        return <FinanceScreen />;
+      case 'attendance':
+        return <AttendanceScreen />;
+      case 'leave':
+        return <LeaveScreen />;
+      case 'reports':
+        return <ReportsScreen />;
+      case 'chat':
+        return <ChatScreen />;
+      case 'settings':
+        return <SettingsScreen />;
+      case 'users':
+        return <UserManagementScreen />;
+      case 'audit':
+        return <AuditLogsScreen />;
+      case 'salary':
+        return <SalaryManagementScreen />;
+      default:
+        return <DashboardRouter onNavigate={handleNavigate} />;
+    }
+  };
+
+  return (
+    <WebLayout
+      session={session}
+      activeRoute={activeRoute}
+      onNavigate={handleNavigate}
+      onLogout={signOut}
+      onChangeCompany={handleCompanyChange}
+    >
+      {renderWebScreen()}
+    </WebLayout>
+  );
+}
+
 // ── Root Navigator ────────────────────────────────────────────────────────────
 export default function AppNavigator() {
-  const { session, loading } = useContext(AuthContext);
+  const { session, loading, signOut, setActiveCompany } = useContext(AuthContext);
   const notificationListener = useRef();
   const responseListener     = useRef();
 
@@ -245,8 +323,6 @@ export default function AppNavigator() {
   useEffect(() => {
     if (!session?.token) return;
 
-    // Register device and send token to backend
-    // Wrapped in try/catch — silently skipped in Expo Go
     (async () => {
       try {
         const pushToken = await registerForPushNotifications();
@@ -265,12 +341,10 @@ export default function AppNavigator() {
           console.log('Could not save push token to backend:', err.message);
         }
       } catch (e) {
-        // expo-notifications not available in Expo Go — ignore
         console.log('Push notifications not available in this runtime.');
       }
     })();
 
-    // Listen for notifications — guarded for Expo Go
     try {
       notificationListener.current = Notifications.addNotificationReceivedListener(
         (notification) => { console.log('Notification received:', notification); },
@@ -298,6 +372,10 @@ export default function AppNavigator() {
         <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
+  }
+
+  if (Platform.OS === 'web' && session?.token) {
+    return <WebMainContainer session={session} signOut={signOut} setActiveCompany={setActiveCompany} />;
   }
 
   return (

@@ -74,6 +74,27 @@ export default function SalaryManagementScreen() {
         </Text>
       </Card>
 
+      {/* Monthly Net Pay Breakdown Preview */}
+      <Card style={{ marginBottom: spacing[4] }}>
+        <CardTitle>📊 Monthly Net Pay Summary</CardTitle>
+        <Text style={{ fontSize: fontSize.xs, color: colors.textMuted, marginBottom: spacing[3] }}>
+          Monthly salary summary per worker based on logged attendance earnings and approved advances.
+        </Text>
+        {staff.slice(0, 10).map((st) => (
+          <View key={st._id} style={{ paddingVertical: spacing[2], borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View>
+              <Text style={{ fontWeight: '700', color: colors.text, fontSize: fontSize.sm }}>{st.name}</Text>
+              <Text style={{ fontSize: fontSize.xs, color: colors.textMuted }}>
+                {st.salaryRate > 0 ? `₹${st.salaryRate}/${st.salaryType === 'hourly' ? 'hr' : 'day'}` : 'Rate not set'}
+              </Text>
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Badge variant="success" label={`Active: ${st.employmentType || 'Full-time'}`} />
+            </View>
+          </View>
+        ))}
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle style={{ marginBottom:0 }}>Staff Pay Rates</CardTitle>

@@ -5,6 +5,7 @@
  */
 import React, { useEffect, useState, useCallback, useContext } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
+import * as Print from 'expo-print';
 import { AuthContext } from '../navigation/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
 import API_BASE_URL from '../config';
@@ -14,6 +15,7 @@ import {
   Btn, Input, Spinner, EmptyState, TabBar, StatCard,
 } from '../components/ui';
 import { colors, spacing, fontSize, statusBadgeVariant, pageStyles } from '../styles/theme';
+import { exportGenericExcel } from '../utils/reportExporter';
 
 const STATUS_OPTIONS = [
   { value:'', label:'All' }, { value:'present', label:'Present' },
@@ -56,7 +58,12 @@ export default function ReportsScreen() {
 
   const today = new Date().toISOString().split('T')[0];
 
-  const TABS = [
+  const TABS = isManager ? [
+    { key:'overview',   label:'📊 Overview' },
+    { key:'attendance', label:'📋 Attendance' },
+    { key:'foil',       label:'🔶 Foil Usage' },
+    { key:'advance',    label:'💸 Advance Report' },
+  ] : [
     { key:'overview',   label:'📊 Overview' },
     { key:'attendance', label:'📋 Attendance' },
     { key:'foil',       label:'🔶 Foil Usage' },
@@ -76,6 +83,11 @@ export default function ReportsScreen() {
   const [foilUsage,   setFoilUsage]   = useState([]);
   const [foilLoading, setFoilLoading] = useState(false);
 
+  // Advance Report state
+  const [reportMonth,   setReportMonth]   = useState(new Date().toISOString().slice(0, 7));
+  const [advanceLogs,   setAdvanceLogs]   = useState([]);
+  const [advanceLoading,setAdvanceLoading]= useState(false);
+
   // Mark attendance (manager)
   const [markForm, setMarkForm] = useState({ workerName:'', status:'present', notes:'' });
   const [marking,  setMarking]  = useState(false);
@@ -90,6 +102,72 @@ export default function ReportsScreen() {
       if (res.ok) setWorkers(await res.json());
     } catch {}
   }, [token, isManager]);
+
+  const fetchAdvanceReport = useCallback(async () => {
+    if (!isManager || !token) return;
+    setAdvanceLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/advance/report?month=${reportMonth}`, {
+        headers: { Authorization: token }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAdvanceLogs(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setAdvanceLoading(false);
+    }
+  }, [token, isManager, reportMonth]);
+
+  const exportAdvanceExcel = async () => {
+    if (!advanceLogs.length) { Alert.alert('No Data', 'No advance logs to export.'); return; }
+    try {
+      const records = advanceLogs.map((row, idx) => ({
+        'S.No': idx + 1,
+        'Worker Name': row.workerName,
+        'Employee No': row.employeeNo || 'N/A',
+        'Amount Requested (₹)': row.amountRequested,
+        'Payment Method': (row.paymentMethod || '').toUpperCase(),
+        'Approved By': row.approvedBy || 'N/A',
+        'Status': (row.status || '').toUpperCase(),
+        'Date': row.date || 'N/A',
+      }));
+      await exportGenericExcel(records, '', '', `Advance_Salary_Report_${reportMonth}`);
+    } catch (err) { Alert.alert('Export Error', err.message); }
+  };
+
+  const exportAdvancePDF = async () => {
+    if (!advanceLogs.length) { Alert.alert('No Data', 'No advance logs to export.'); return; }
+    try {
+      const htmlContent = `
+        <html><body style="font-family: Arial, sans-serif; padding: 20px;">
+          <h1 style="text-align: center;">MONTHLY SALARY ADVANCE REPORT</h1>
+          <h3 style="text-align: center; color: #64748b;">Month: ${reportMonth}</h3>
+          <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+            <thead><tr style="background: #f1f5f9;">
+              <th style="padding: 8px; border: 1px solid #ccc;">Worker</th>
+              <th style="padding: 8px; border: 1px solid #ccc;">Emp No</th>
+              <th style="padding: 8px; border: 1px solid #ccc;">Amount</th>
+              <th style="padding: 8px; border: 1px solid #ccc;">Method</th>
+              <th style="padding: 8px; border: 1px solid #ccc;">Status</th>
+            </tr></thead>
+            <tbody>
+              ${advanceLogs.map(r => `
+                <tr>
+                  <td style="padding: 8px; border: 1px solid #ccc;">${r.workerName}</td>
+                  <td style="padding: 8px; border: 1px solid #ccc;">${r.employeeNo || '—'}</td>
+                  <td style="padding: 8px; border: 1px solid #ccc;">₹${r.amountRequested}</td>
+                  <td style="padding: 8px; border: 1px solid #ccc;">${(r.paymentMethod || '').toUpperCase()}</td>
+                  <td style="padding: 8px; border: 1px solid #ccc;">${(r.status || '').toUpperCase()}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </body></html>`;
+      await Print.printAsync({ html: htmlContent });
+    } catch (err) { Alert.alert('Export Error', err.message); }
+  };
 
   const fetchAttendance = useCallback(async () => {
     setAttLoading(true); setAttError('');
@@ -115,7 +193,7 @@ export default function ReportsScreen() {
     finally { setFoilLoading(false); }
   }, [token]);
 
-  useEffect(() => { fetchWorkers(); fetchAttendance(); fetchFoilUsage(); }, [fetchWorkers, fetchAttendance, fetchFoilUsage]);
+  useEffect(() => { fetchWorkers(); fetchAttendance(); fetchFoilUsage(); fetchAdvanceReport(); }, [fetchWorkers, fetchAttendance, fetchFoilUsage, fetchAdvanceReport]);
 
   const markAttendance = async () => {
     if (!markForm.workerName) { setMarkError('Select a worker.'); return; }
@@ -292,6 +370,54 @@ export default function ReportsScreen() {
                   <Text style={{ fontSize:fontSize.xs, color: Number(row.variance)>0 ? colors.danger : colors.success }}>
                     Δ {Number(row.variance||0).toFixed(2)}
                   </Text>
+                </View>
+              </View>
+            ))
+          )}
+        </Card>
+      )}
+
+      {/* ── ADVANCE REPORT (Admin / CEO / Manager) ── */}
+      {activeTab === 'advance' && (
+        <Card>
+          <CardHeader>
+            <CardTitle style={{ marginBottom:0 }}>💸 Monthly Advance Report</CardTitle>
+            <Badge variant="warning" label={reportMonth} />
+          </CardHeader>
+
+          <Input
+            label="Select Month (YYYY-MM)"
+            value={reportMonth}
+            onChangeText={setReportMonth}
+            placeholder="e.g. 2026-07"
+            style={{ marginBottom: spacing[3] }}
+          />
+
+          <View style={{ flexDirection:'row', gap:spacing[2], marginBottom:spacing[3] }}>
+            <Btn label="📊 Export Excel" onPress={exportAdvanceExcel} variant="success" style={{ flex:1 }} />
+            <Btn label="📄 Export PDF" onPress={exportAdvancePDF} variant="secondary" style={{ flex:1 }} />
+          </View>
+
+          {advanceLoading ? <Spinner /> : advanceLogs.length === 0 ? (
+            <EmptyState message={`No salary advance logs found for ${reportMonth}.`} />
+          ) : (
+            advanceLogs.map((row) => (
+              <View key={row._id} style={s.recRow}>
+                <View style={{ flex:1 }}>
+                  <Text style={s.recName}>{row.workerName}</Text>
+                  <Text style={s.recSub}>
+                    {row.employeeNo ? `Emp No: ${row.employeeNo} · ` : ''}
+                    Method: {(row.paymentMethod || 'online').toUpperCase()}
+                    {row.approvedBy ? ` · By: ${row.approvedBy}` : ''}
+                  </Text>
+                  <Text style={[s.recSub, { fontSize:fontSize.xs, color:colors.textLight }]}>{row.date}</Text>
+                </View>
+                <View style={{ alignItems:'flex-end' }}>
+                  <Text style={{ fontWeight:'800', color:colors.text, fontSize:fontSize.base }}>₹{row.amountRequested}</Text>
+                  <Badge
+                    variant={row.status === 'approved' ? 'success' : row.status === 'rejected' ? 'danger' : 'warning'}
+                    label={(row.status || 'pending').toUpperCase()}
+                  />
                 </View>
               </View>
             ))

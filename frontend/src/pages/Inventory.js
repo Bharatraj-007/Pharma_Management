@@ -139,11 +139,14 @@ function Stock() {
     setStockError("");
 
     try {
+      const activeCo = localStorage.getItem("activeCompany") || "all";
+      const coQuery = role === "ceo" && activeCo ? `?company=${activeCo}` : "";
+
       const [foilResponse, cylinderResponse] = await Promise.all([
-        fetch(`${API_BASE_URL}/foils`, {
+        fetch(`${API_BASE_URL}/foils${coQuery}`, {
           headers: { Authorization: localStorage.getItem("token") }
         }),
-        fetch(`${API_BASE_URL}/cylinders`, {
+        fetch(`${API_BASE_URL}/cylinders${coQuery}`, {
           headers: { Authorization: localStorage.getItem("token") }
         })
       ]);
@@ -153,21 +156,27 @@ function Stock() {
       }
 
       const [foilData, cylinderData] = await Promise.all([foilResponse.json(), cylinderResponse.json()]);
-      setFoils(foilData);
-      setCylinders(cylinderData);
+      setFoils(Array.isArray(foilData) ? foilData : []);
+      setCylinders(Array.isArray(cylinderData) ? cylinderData : []);
       fetchStockLogs();
     } catch (err) {
       setStockError(err.message);
     } finally {
       setStockLoading(false);
     }
-  }, [fetchStockLogs]);
+  }, [fetchStockLogs, role]);
 
   useEffect(() => {
     if (isAuthorized) {
       fetchStock();
       fetchStockLogs();
     }
+    const handleCompanyChange = () => {
+      fetchStock();
+      fetchStockLogs();
+    };
+    window.addEventListener("companyChanged", handleCompanyChange);
+    return () => window.removeEventListener("companyChanged", handleCompanyChange);
   }, [fetchStock, fetchStockLogs, isAuthorized]);
 
   const normalize = (value) => String(value || "").toLowerCase();

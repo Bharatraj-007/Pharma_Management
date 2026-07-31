@@ -39,7 +39,14 @@ const dispatchSchema = new mongoose.Schema({
   // Roll-specific (Company 2 / Shree Ganaapathy Roto Prints)
   rollColors: [{ type: String }],
   rollWeightKg: Number,
-  rollSize: String
+  rollSize: String,
+
+  // Product Master & Finance linkage
+  productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
+  saleAmount: { type: Number, default: 0 },
+  isDeleted: { type: Boolean, default: false, index: true },
+  deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  deletedAt: { type: Date }
 }, { timestamps: true });
 
 dispatchSchema.index({ company: 1, dispatchDate: -1 });
