@@ -88,6 +88,14 @@ const loginLimiter = rateLimit({
   legacyHeaders: false
 });
 
+const otpRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { error: "Too many verification OTP requests from this IP. Please wait 15 minutes before trying again." },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
 const http = require("http");
 const socketIo = require("socket.io");
 const server = http.createServer(app);
@@ -313,11 +321,29 @@ async function seedDefaultUsers() {
   }
 }
 
+function scheduleDatabaseCleanup() {
+  setInterval(async () => {
+    try {
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const result = await PendingSignup.deleteMany({
+        status: { $in: ["rejected", "pending_self_verification"] },
+        createdAt: { $lt: thirtyDaysAgo }
+      });
+      if (result && result.deletedCount > 0) {
+        console.log(`🧹 Cleaned up ${result.deletedCount} expired/rejected signup requests older than 30 days.`);
+      }
+    } catch (err) {
+      console.error("Database cleanup error:", err.message);
+    }
+  }, 24 * 60 * 60 * 1000);
+}
+
 async function connectDatabase() {
   try {
     await mongoose.connect(MONGODB_URI);
     console.log("DB Connected to", MONGODB_URI.startsWith("mongodb://127.0.0.1") ? "local MongoDB" : "MongoDB Atlas");
     await seedDefaultUsers();
+    scheduleDatabaseCleanup();
   } catch (err) {
     console.error("DB connection failed for URI:", MONGODB_URI);
     console.error(err.message || err);
@@ -1890,8 +1916,8 @@ async function getApproverUser(requestedRole, company) {
   return await User.findOne({ role: "admin" });
 }
 
-// 📩 STEP 1: SEND SELF-OTP FOR IDENTITY VERIFICATION
-app.post(["/api/auth/signup/send-self-otp", "/signup", "/api/signup"], async (req, res) => {
+// 📩 STEP 1: SEND SELF-OTP FOR IDENTITY VERIFICATION (With anti-spam rate limiting)
+app.post(["/api/auth/signup/send-self-otp", "/signup", "/api/signup"], otpRateLimiter, async (req, res) => {
   try {
     const {
       firstName,
@@ -2088,6 +2114,16 @@ app.put(["/api/signup-requests/:id/accept", "/approve", "/api/approve"], verifyT
     pending.decidedAt = new Date();
     await pending.save();
 
+    await createAuditLog({
+      user: req.user,
+      action: "SIGNUP_APPROVE",
+      category: "USER",
+      targetId: newUser._id,
+      targetName: newUser.name,
+      details: `Approved ${pending.requestedRole.toUpperCase()} account for ${pending.email} at ${pending.company}`,
+      req
+    });
+
     try {
       if (transporter && transporter.sendMail) {
         await transporter.sendMail({
@@ -2121,6 +2157,16 @@ app.put(["/api/signup-requests/:id/reject", "/reject", "/api/reject"], verifyTok
     pending.rejectionReason = req.body.reason || "Declined by approver";
     pending.decidedAt = new Date();
     await pending.save();
+
+    await createAuditLog({
+      user: req.user,
+      action: "SIGNUP_REJECT",
+      category: "USER",
+      targetId: pending._id,
+      targetName: pending.name,
+      details: `Rejected ${pending.requestedRole.toUpperCase()} account for ${pending.email}. Reason: ${pending.rejectionReason}`,
+      req
+    });
 
     res.json({ message: "Signup request rejected", pending });
   } catch (err) {

@@ -12,6 +12,11 @@ async function processCdrConversion(taskFileId, filePath, serverBaseUrl) {
     const taskFile = await TaskFile.findById(taskFileId);
     if (!taskFile) return;
 
+    if (taskFile.previewFileUrl && taskFile.thumbnailUrl && taskFile.status === "ready") {
+      console.log(`⏩ Cached preview & thumbnail URL available for file ${taskFileId}`);
+      return;
+    }
+
     const absFilePath = path.resolve(filePath);
     if (!fs.existsSync(absFilePath)) {
       taskFile.status = "failed";
