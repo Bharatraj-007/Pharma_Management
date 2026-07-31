@@ -82,14 +82,20 @@ export function CardTitle({ children, style }) {
 }
 
 // ── Text Input ────────────────────────────────────────────────────────────────
-export function Input({ label, style, inputStyle, ...props }) {
+export function Input({ label, style, inputStyle, editable = true, ...props }) {
   const [focused, setFocused] = useState(false);
   return (
     <View style={[formStyles.group, style]}>
       {label ? <Text style={formStyles.label}>{label}</Text> : null}
       <TextInput
-        style={[formStyles.input, focused && formStyles.inputFocused, inputStyle]}
-        placeholderTextColor={colors.textLight}
+        style={[
+          formStyles.input,
+          focused && formStyles.inputFocused,
+          !editable && { backgroundColor: '#f1f5f9', color: '#94a3b8', borderColor: '#cbd5e1' },
+          inputStyle
+        ]}
+        editable={editable}
+        placeholderTextColor={editable ? colors.textLight : '#94a3b8'}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         {...props}

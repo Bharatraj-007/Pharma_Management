@@ -64,7 +64,7 @@ export default function SignupScreen({ navigation }) {
   const [form, setForm] = useState({
     firstName: '', lastName: '', email: '', phone: '',
     dob: '', age: '', joiningDate: '',
-    company: 'bharath', idProofType: 'aadhar', idProofNumber: '',
+    company: 'bharath', idProofType: '', idProofNumber: '',
     password: '', confirmPassword: '', role: 'worker',
   });
   
@@ -77,6 +77,20 @@ export default function SignupScreen({ navigation }) {
   const [cooldown, setCooldown] = useState(0);
 
   const set = (key) => (val) => setForm((prev) => ({ ...prev, [key]: val }));
+
+  const handleIdTypeChange = (type) => {
+    setForm((prev) => ({ ...prev, idProofType: type, idProofNumber: '' }));
+  };
+
+  const handleIdNumberChange = (text) => {
+    let formatted = text;
+    if (form.idProofType === 'aadhar') {
+      formatted = text.replace(/\D/g, '').slice(0, 12);
+    } else if (form.idProofType === 'pan') {
+      formatted = text.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
+    }
+    setForm((prev) => ({ ...prev, idProofNumber: formatted }));
+  };
 
   useEffect(() => {
     let timer;
@@ -98,6 +112,9 @@ export default function SignupScreen({ navigation }) {
     if (!form.dob || !form.age || Number(form.age) <= 0 || !form.joiningDate) {
       setError('DOB, Age, and Date of Joining are compulsory.'); return;
     }
+    if (!form.idProofType) {
+      setError('Please select an ID Proof Type (Aadhaar or PAN) first.'); return;
+    }
     if (!form.idProofNumber.trim()) {
       setError('ID Proof Number is compulsory.'); return;
     }
@@ -112,7 +129,7 @@ export default function SignupScreen({ navigation }) {
       }
     }
     if (!isStrongPassword(form.password)) {
-      setError('Password must be 8+ chars with uppercase, lowercase, number & symbol.'); return;
+      setError('Password must be at least 8 characters long and include at least one number.'); return;
     }
     if (form.password !== form.confirmPassword) {
       setError('Passwords do not match.'); return;
@@ -179,17 +196,33 @@ export default function SignupScreen({ navigation }) {
                 <Input label="First Name *"     value={form.firstName}     onChangeText={set('firstName')}     placeholder="First name" />
                 <Input label="Last Name *"      value={form.lastName}      onChangeText={set('lastName')}      placeholder="Last name" />
                 <Input label="Email *"          value={form.email}         onChangeText={set('email')}         placeholder="Email address" keyboardType="email-address" autoCapitalize="none" />
-                <Input label="Phone"            value={form.phone}         onChangeText={set('phone')}         placeholder="Phone number" keyboardType="phone-pad" />
-                <Input label="Date of Birth (YYYY-MM-DD)" value={form.dob} onChangeText={set('dob')}          placeholder="e.g. 1995-06-15" />
-                <Input label="Age"              value={form.age}           onChangeText={set('age')}           placeholder="Age" keyboardType="numeric" />
-                <Input label="Date of Joining (YYYY-MM-DD)" value={form.joiningDate} onChangeText={set('joiningDate')} placeholder="e.g. 2024-01-01" />
-                <Input label="ID Number"        value={form.idProofNumber} onChangeText={set('idProofNumber')} placeholder="ID number" />
-                <Input label="Password *"       value={form.password}      onChangeText={set('password')}      placeholder="Min 8 chars A-Z a-z 0-9 symbol" secureTextEntry />
-                <Input label="Confirm Password *" value={form.confirmPassword} onChangeText={set('confirmPassword')} placeholder="Repeat password" secureTextEntry />
+                <Input label="Phone *"          value={form.phone}         onChangeText={set('phone')}         placeholder="10-digit mobile number" keyboardType="phone-pad" maxLength={10} />
+                <Input label="Date of Birth (YYYY-MM-DD) *" value={form.dob} onChangeText={set('dob')}        placeholder="e.g. 1995-06-15" />
+                <Input label="Age *"            value={form.age}           onChangeText={set('age')}           placeholder="Age" keyboardType="numeric" />
+                <Input label="Date of Joining (YYYY-MM-DD) *" value={form.joiningDate} onChangeText={set('joiningDate')} placeholder="e.g. 2024-01-01" />
 
                 <PickerRow label="Company *"  options={COMPANIES} value={form.company}     onChange={set('company')} />
-                <PickerRow label="ID Proof *" options={ID_PROOFS}  value={form.idProofType} onChange={set('idProofType')} />
                 <PickerRow label="Role *"     options={ROLES}      value={form.role}        onChange={set('role')} />
+                <PickerRow label="ID Proof Type *" options={ID_PROOFS}  value={form.idProofType} onChange={handleIdTypeChange} />
+
+                <Input
+                  label={`ID Proof Number * ${!form.idProofType ? '(Select ID Proof Type First)' : ''}`}
+                  value={form.idProofNumber}
+                  onChangeText={handleIdNumberChange}
+                  editable={!!form.idProofType}
+                  placeholder={
+                    !form.idProofType
+                      ? '🔒 Select Aadhaar or PAN above to type'
+                      : form.idProofType === 'aadhar'
+                      ? 'Enter 12-digit Aadhaar (e.g. 123456789012)'
+                      : 'Enter 10-character PAN (e.g. AAAPB1234C)'
+                  }
+                  autoCapitalize={form.idProofType === 'pan' ? 'characters' : 'none'}
+                  maxLength={form.idProofType === 'aadhar' ? 12 : form.idProofType === 'pan' ? 10 : 30}
+                />
+
+                <Input label="Password *"       value={form.password}      onChangeText={set('password')}      placeholder="Min 8 chars with at least 1 number" secureTextEntry />
+                <Input label="Confirm Password *" value={form.confirmPassword} onChangeText={set('confirmPassword')} placeholder="Repeat password" secureTextEntry />
 
                 <Btn label={loading ? 'Sending Verification OTP…' : 'Send Verification OTP'} onPress={sendSelfOtp} loading={loading} block size="lg" />
               </>
