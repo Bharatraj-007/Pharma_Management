@@ -2010,14 +2010,15 @@ async function sendSmsOtp(phone, otp) {
   if (!phone) return false;
   try {
     const cleanDigits = phone.replace(/\D/g, "");
+    const fast2smsKey = process.env.FAST2SMS_API_KEY || "ixTRymFbAHSe6QCYIKMtdhfrNEuvonlZUWa4DJw2017G58kLcOpr5wTVAGuaLy4mfFWelqzMY7RHOcvQ";
 
     // 1. Fast2SMS (Free Indian Mobile SMS Gateway)
-    if (process.env.FAST2SMS_API_KEY && cleanDigits.length >= 10) {
+    if (fast2smsKey && cleanDigits.length >= 10) {
       const targetPhone = cleanDigits.slice(-10);
       const res = await fetch("https://www.fast2sms.com/dev/bulkV2", {
         method: "POST",
         headers: {
-          "authorization": process.env.FAST2SMS_API_KEY,
+          "authorization": fast2smsKey,
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
