@@ -2,9 +2,9 @@
 // API_BASE_URL Config Engine
 //
 // Online Deployed Backend (Render):
-//   https://pharma-management-cpqx.onrender.com
+//   https://pharma-management-ioat.onrender.com
 // ─────────────────────────────────────────────────────────────────────────────
-const ONLINE_BACKEND_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'https://pharma-management-cpqx.onrender.com';
+const ONLINE_BACKEND_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'https://pharma-management-ioat.onrender.com';
 
 let API_BASE_URL = ONLINE_BACKEND_URL;
 

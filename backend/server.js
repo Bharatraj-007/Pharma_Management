@@ -506,7 +506,7 @@ function generateCylinderBarcode(size, color) {
 
 
 // 🔐 LOGIN
-app.post("/login", async (req, res) => {
+app.post(["/login", "/api/login", "/api/auth/login"], async (req, res) => {
   const { email, password } = req.body;
 
   let user = await User.findOne({ email });
