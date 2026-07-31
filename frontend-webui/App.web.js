@@ -14,6 +14,7 @@ import ChatScreen from './screens/ChatScreen.web';
 import LeaveScreen from './screens/LeaveScreen.web';
 import SalaryManagementScreen from './screens/SalaryManagementScreen.web';
 import UserManagementScreen from './screens/UserManagementScreen.web';
+import SignupRequestsScreen from './screens/SignupRequestsScreen.web';
 import ReportsScreen from './screens/ReportsScreen.web';
 import AuditLogsScreen from './screens/AuditLogsScreen.web';
 import ProfileScreen from './screens/ProfileScreen.web';
@@ -82,6 +83,8 @@ export default function WebApp() {
         return <SalaryManagementScreen apiBaseUrl={API_BASE_URL} session={session} />;
       case 'userManagement':
         return <UserManagementScreen apiBaseUrl={API_BASE_URL} session={session} />;
+      case 'signupRequests':
+        return <SignupRequestsScreen apiBaseUrl={API_BASE_URL} session={session} />;
       case 'reports':
         return <ReportsScreen apiBaseUrl={API_BASE_URL} session={session} />;
       case 'auditLogs':

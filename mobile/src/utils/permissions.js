@@ -21,6 +21,7 @@ export const PERMISSIONS = {
   reports:          ['ceo', 'admin', 'manager', 'worker'],
   auditLogs:        ['ceo', 'admin'],
   userManagement:   ['ceo', 'admin'],
+  signupRequests:   ['ceo', 'admin'],
   salaryManagement: ['ceo', 'admin'],
   settings:         ['ceo', 'admin', 'manager', 'worker'],
   chat:             ['ceo', 'admin', 'manager', 'worker'],
@@ -49,6 +50,7 @@ export const MENU_ITEMS = [
   { key: 'chat',             label: 'Messages',     icon: '💬', screen: 'Chat',            section: 'main' },
   { key: 'settings',         label: 'Settings',     icon: '⚙️', screen: 'Settings',        section: 'main' },
   { key: 'userManagement',   label: 'Users',        icon: '👥', screen: 'UserManagement',  section: 'admin' },
+  { key: 'signupRequests',   label: 'Signup Requests',icon: '📝', screen: 'SignupRequests', section: 'admin' },
   { key: 'auditLogs',        label: 'Audit Logs',   icon: '🔍', screen: 'AuditLogs',       section: 'admin' },
   { key: 'salaryManagement', label: 'Salary',       icon: '💰', screen: 'SalaryManagement',section: 'admin' },
 ];

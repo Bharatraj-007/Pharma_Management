@@ -24,6 +24,7 @@ const AdvanceRequest = require("./models/AdvanceRequest");
 const ClientCompany = require("./models/ClientCompany");
 const ClientProduct = require("./models/ClientProduct");
 const TaskFile = require("./models/TaskFile");
+const PendingSignup = require("./models/PendingSignup");
 const { processCdrConversion } = require("./utils/cdrConverter");
 const AdmZip = require("adm-zip");
 const helmet = require("helmet");
@@ -1847,116 +1848,252 @@ async function createAuditLog({ req, action, itemType, before, after }) {
   }
 }
 
-// 📩 SIGNUP WITH OTP (worker/manager only)
-app.post("/signup", async (req, res) => {
-  const {
-    firstName,
-    lastName,
-    email,
-    phone,
-    dob,
-    age,
-    joiningDate,
-    idProofType,
-    idProofNumber,
-    password,
-    role,
-    company
-  } = req.body;
-
-  if (role === "admin" || role === "ceo") {
-    return res.status(403).send("Role not allowed");
+async function getApproverUser(requestedRole, company) {
+  if (requestedRole === "worker" || requestedRole === "manager") {
+    const admin = await User.findOne({ role: "admin", company });
+    if (admin) return admin;
   }
+  const ceo = await User.findOne({ role: "ceo" });
+  if (ceo) return ceo;
+  return await User.findOne({ role: "admin" });
+}
 
-  if (!COMPANY_NAMES[company]) {
-    return res.status(400).send("Please select a valid company");
+// 📩 STEP 1: SEND SELF-OTP FOR IDENTITY VERIFICATION
+app.post(["/api/auth/signup/send-self-otp", "/signup", "/api/signup"], async (req, res) => {
+  try {
+    const {
+      firstName,
+      lastName,
+      email,
+      phone,
+      dob,
+      age,
+      joiningDate,
+      idProofType,
+      idProofNumber,
+      password,
+      role = "worker",
+      company = "bharath"
+    } = req.body;
+
+    const cleanEmail = (email || "").trim().toLowerCase();
+    if (!cleanEmail) return res.status(400).json({ error: "Email is required" });
+
+    const existingUser = await User.findOne({ email: cleanEmail });
+    if (existingUser) return res.status(400).json({ error: "An account with this email already exists" });
+
+    if (!isStrongPassword(password)) {
+      return res.status(400).json({ error: "Weak password — must contain 8+ chars, uppercase, lowercase, number, special char" });
+    }
+
+    const hashed = await bcrypt.hash(password, 10);
+    const selfOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    const selfOtpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
+
+    let pending = await PendingSignup.findOne({ email: cleanEmail });
+    if (pending) {
+      Object.assign(pending, {
+        firstName,
+        lastName,
+        name: `${firstName || ""} ${lastName || ""}`.trim(),
+        phone: phone || "",
+        dob: dob || "",
+        age: Number(age) || 0,
+        dateOfJoining: joiningDate || "",
+        company,
+        idProofType: idProofType || "",
+        idProofNumber: idProofNumber || "",
+        passwordHash: hashed,
+        requestedRole: role,
+        selfOtp,
+        selfOtpExpiresAt,
+        emailVerified: false,
+        status: "pending_self_verification"
+      });
+      await pending.save();
+    } else {
+      pending = await PendingSignup.create({
+        firstName,
+        lastName,
+        name: `${firstName || ""} ${lastName || ""}`.trim(),
+        email: cleanEmail,
+        phone: phone || "",
+        dob: dob || "",
+        age: Number(age) || 0,
+        dateOfJoining: joiningDate || "",
+        company,
+        idProofType: idProofType || "",
+        idProofNumber: idProofNumber || "",
+        passwordHash: hashed,
+        requestedRole: role,
+        selfOtp,
+        selfOtpExpiresAt,
+        emailVerified: false,
+        status: "pending_self_verification"
+      });
+    }
+
+    try {
+      if (transporter && transporter.sendMail) {
+        await transporter.sendMail({
+          to: cleanEmail,
+          subject: "Smart Pharma System - Verification OTP",
+          text: `Your 6-digit verification code is: ${selfOtp}. It expires in 10 minutes.`
+        });
+      }
+    } catch (mailErr) {
+      console.warn("Mail dispatch warning:", mailErr.message);
+    }
+
+    console.log(`🔑 Verification OTP for ${cleanEmail}: ${selfOtp}`);
+
+    res.json({
+      message: `OTP sent to ${cleanEmail}. Please enter the code to verify your identity.`,
+      email: cleanEmail,
+      devOtp: process.env.NODE_ENV === "development" ? selfOtp : undefined
+    });
+  } catch (err) {
+    console.error("Send self OTP error:", err);
+    res.status(500).json({ error: err.message || "Failed to send verification OTP" });
   }
-
-  if (!isStrongPassword(password)) {
-    return res.status(400).send("Weak password - use 8+ chars, Upper, lower, number, special");
-  }
-
-  const hashed = await bcrypt.hash(password, 10);
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-  const user = new UserRequest({
-    firstName,
-    lastName,
-    email,
-    phone,
-    dob: new Date(dob),
-    age: Number(age),
-    joiningDate: new Date(joiningDate),
-    idProofType,
-    idProofNumber,
-    password: hashed,
-    role,
-    company,
-    otp,
-    otpVerified: false
-  });
-
-  await user.save();
-
-  await transporter.sendMail({
-    to: email,
-    subject: "OTP Verification",
-    text: `Your OTP is ${otp}`
-  });
-
-  res.send("OTP sent - check server terminal");
 });
 
-// 👨‍💼 VIEW REQUESTS (ADMIN/CEO) - only otpVerified pending
-app.get("/requests", verifyToken, allowRoles("admin", "ceo"), async (req, res) => {
-  const company = await getRequestCompany(req);
-  const data = await UserRequest.find({ company, status: "pending", otpVerified: true });
-  res.json(data);
-});
+// 📩 STEP 1 VERIFY: VERIFY SELF-OTP & TRIGGER IN-APP APPROVAL REQUEST
+app.post(["/api/auth/signup/verify-self-otp", "/verify-otp", "/api/verify-otp"], async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    const cleanEmail = (email || "").trim().toLowerCase();
 
-// 📩 VERIFY OTP
-app.post("/verify-otp", async (req, res) => {
-  const { email, otp } = req.body;
-  const user = await UserRequest.findOne({ email });
+    const pending = await PendingSignup.findOne({ email: cleanEmail });
+    if (!pending) return res.status(400).json({ error: "Pending signup request not found" });
 
-  if (!user || user.otp !== otp) {
-    return res.status(400).send("Invalid OTP");
+    if (pending.selfOtp !== String(otp).trim() || new Date(pending.selfOtpExpiresAt) < new Date()) {
+      return res.status(400).json({ error: "Invalid or expired OTP code" });
+    }
+
+    pending.emailVerified = true;
+    pending.phoneVerified = true;
+
+    const approver = await getApproverUser(pending.requestedRole, pending.company);
+    if (approver) {
+      pending.approverUserId = approver._id;
+      pending.approverRole = approver.role;
+    }
+    pending.status = "pending_approval";
+    await pending.save();
+
+    if (approver) {
+      await Notification.create({
+        userId: approver._id,
+        title: "📋 New Signup Approval Request",
+        message: `${pending.name} requested to join ${pending.company} as ${pending.requestedRole.toUpperCase()}`,
+        type: "signup_request",
+        link: "/signup-requests"
+      });
+      io.emit("notification", { userId: approver._id });
+      io.emit("signup_request_new", { id: pending._id, approverId: approver._id });
+    }
+
+    res.json({
+      message: `Identity verified successfully! Approval request sent to ${approver?.role?.toUpperCase() || "Admin"} (${approver?.name || "Company Approver"}).`,
+      status: pending.status,
+      approverRole: approver?.role || "admin",
+      approverName: approver?.name || "Company Approver"
+    });
+  } catch (err) {
+    console.error("Verify self OTP error:", err);
+    res.status(500).json({ error: err.message || "Failed to verify OTP" });
   }
-
-  user.otpVerified = true;
-  await user.save();
-
-  res.send("OTP Verified, waiting for admin approval");
 });
 
-// ✅ APPROVE REQUEST
-app.post("/approve", verifyToken, allowRoles("admin", "ceo"), async (req, res) => {
-  const { id } = req.body;
-  const reqUser = await UserRequest.findById(id);
+// 👨‍💼 STEP 2 VIEW: GET PENDING SIGNUP REQUESTS FOR ADMIN / CEO
+app.get(["/api/signup-requests", "/requests", "/api/requests"], verifyToken, allowRoles("admin", "ceo"), async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    let filter = { status: "pending_approval" };
 
-  if (!reqUser) return res.status(404).send("Not found");
+    if (user.role === "admin") {
+      filter.company = user.assignedCompany || user.company;
+    }
 
-  const user = new User({
-    name: `${reqUser.firstName} ${reqUser.lastName}`,
-    email: reqUser.email,
-    password: reqUser.password,
-    role: reqUser.role,
-    company: reqUser.company,
-    employeeNo: await getNextEmployeeNo(reqUser.company)
-  });
-
-  await user.save();
-  reqUser.status = "approved";
-  await reqUser.save();
-
-  res.send("User approved");
+    const requests = await PendingSignup.find(filter).sort({ createdAt: -1 });
+    res.json(requests);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// ❌ REJECT REQUEST
-app.post("/reject", verifyToken, allowRoles("admin", "ceo"), async (req, res) => {
-  const { id } = req.body;
-  await UserRequest.findByIdAndUpdate(id, { status: "rejected" });
-  res.send("Rejected");
+// ✅ STEP 2 APPROVE: ADMIN / CEO ACCEPTS REQUEST & CREATES ACTIVE USER ACCOUNT
+app.put(["/api/signup-requests/:id/accept", "/approve", "/api/approve"], verifyToken, allowRoles("admin", "ceo"), async (req, res) => {
+  try {
+    const requestId = req.params.id || req.body.id;
+    const pending = await PendingSignup.findById(requestId);
+    if (!pending) return res.status(404).json({ error: "Signup request not found" });
+
+    if (pending.status === "approved") {
+      return res.status(400).json({ error: "Request has already been approved" });
+    }
+
+    const employeeNo = await getNextEmployeeNo(pending.company);
+    const newUser = new User({
+      name: pending.name || `${pending.firstName} ${pending.lastName}`,
+      email: pending.email,
+      phone: pending.phone,
+      password: pending.passwordHash,
+      role: pending.requestedRole,
+      company: pending.company,
+      assignedCompany: pending.company,
+      employeeNo,
+      dob: pending.dob,
+      joiningDate: pending.dateOfJoining,
+      idProofType: pending.idProofType,
+      idProofNumber: pending.idProofNumber
+    });
+
+    await newUser.save();
+
+    pending.status = "approved";
+    pending.decidedAt = new Date();
+    await pending.save();
+
+    try {
+      if (transporter && transporter.sendMail) {
+        await transporter.sendMail({
+          to: pending.email,
+          subject: "Smart Pharma Account Approved 🎉",
+          text: `Congratulations! Your account request for ${pending.company} has been approved by ${req.user.role.toUpperCase()}. You can now log in.`
+        });
+      }
+    } catch (mailErr) {
+      console.warn("Mail approval notification warning:", mailErr.message);
+    }
+
+    res.json({
+      message: `Account approved and activated! Assigned Employee No: ${employeeNo}`,
+      user: newUser
+    });
+  } catch (err) {
+    console.error("Approve signup error:", err);
+    res.status(500).json({ error: err.message || "Failed to approve request" });
+  }
+});
+
+// ❌ STEP 2 REJECT: ADMIN / CEO REJECTS REQUEST
+app.put(["/api/signup-requests/:id/reject", "/reject", "/api/reject"], verifyToken, allowRoles("admin", "ceo"), async (req, res) => {
+  try {
+    const requestId = req.params.id || req.body.id;
+    const pending = await PendingSignup.findById(requestId);
+    if (!pending) return res.status(404).json({ error: "Signup request not found" });
+
+    pending.status = "rejected";
+    pending.rejectionReason = req.body.reason || "Declined by approver";
+    pending.decidedAt = new Date();
+    await pending.save();
+
+    res.json({ message: "Signup request rejected", pending });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // GET dashboard summary

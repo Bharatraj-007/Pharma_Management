@@ -33,6 +33,7 @@ import ReportsScreen          from '../screens/ReportsScreen';
 import ChatScreen             from '../screens/ChatScreen';
 import SettingsScreen         from '../screens/SettingsScreen';
 import UserManagementScreen   from '../screens/UserManagementScreen';
+import SignupRequestsScreen   from '../screens/SignupRequestsScreen';
 import AuditLogsScreen        from '../screens/AuditLogsScreen';
 import SalaryManagementScreen from '../screens/SalaryManagementScreen';
 import ProfileScreen          from '../screens/ProfileScreen';
@@ -232,6 +233,7 @@ function MainDrawer() {
       <Drawer.Screen name="Chat"             component={ChatScreen}             options={{ title: '💬 Messages' }} />
       <Drawer.Screen name="Settings"         component={SettingsScreen}         options={{ title: '⚙️ Settings' }} />
       <Drawer.Screen name="UserManagement"   component={UserManagementScreen}   options={{ title: '👥 Users' }} />
+      <Drawer.Screen name="SignupRequests"   component={SignupRequestsScreen}   options={{ title: '📝 Signup Requests' }} />
       <Drawer.Screen name="AuditLogs"        component={AuditLogsScreen}        options={{ title: '🔍 Audit Logs' }} />
       <Drawer.Screen name="SalaryManagement" component={SalaryManagementScreen} options={{ title: '💰 Salary' }} />
       <Drawer.Screen name="Profile"          component={ProfileScreen}          options={{ title: '👤 Profile' }} />
@@ -291,6 +293,8 @@ function WebMainContainer({ session, signOut, setActiveCompany }) {
         return <SettingsScreen />;
       case 'users':
         return <UserManagementScreen />;
+      case 'signupRequests':
+        return <SignupRequestsScreen />;
       case 'audit':
         return <AuditLogsScreen />;
       case 'salary':

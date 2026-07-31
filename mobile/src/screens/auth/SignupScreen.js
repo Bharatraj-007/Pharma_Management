@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
   KeyboardAvoidingView, Platform, StyleSheet,
@@ -22,13 +22,14 @@ const ID_PROOFS = [
 const ROLES = [
   { value: 'worker',  label: 'Worker' },
   { value: 'manager', label: 'Manager' },
+  { value: 'admin',   label: 'Admin' },
+  { value: 'ceo',     label: 'CEO' },
 ];
 
 function isStrongPassword(pwd) {
   return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/.test(pwd);
 }
 
-/** Simple inline picker rendered as tappable chips */
 function PickerRow({ label, options, value, onChange }) {
   return (
     <View style={{ marginBottom: spacing[4] }}>
@@ -66,36 +67,48 @@ export default function SignupScreen({ navigation }) {
     company: 'bharath', idProofType: 'aadhar', idProofNumber: '',
     password: '', confirmPassword: '', role: 'worker',
   });
-  const [showOtp, setShowOtp] = useState(false);
-  const [otp, setOtp]         = useState('');
+  
+  const [stage, setStage] = useState('fill'); // 'fill' | 'otp' | 'pending_approval'
+  const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState('');
+  const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [approverInfo, setApproverInfo] = useState('');
+  const [cooldown, setCooldown] = useState(0);
 
   const set = (key) => (val) => setForm((prev) => ({ ...prev, [key]: val }));
 
-  const sendOtp = async () => {
+  useEffect(() => {
+    let timer;
+    if (cooldown > 0) {
+      timer = setInterval(() => setCooldown((prev) => prev - 1), 1000);
+    }
+    return () => clearInterval(timer);
+  }, [cooldown]);
+
+  const sendSelfOtp = async () => {
     setError(''); setSuccess('');
     if (!form.firstName || !form.lastName || !form.email || !form.password) {
-      setError('Please fill all required fields.'); return;
+      setError('Please fill all required fields (Name, Email, Password).'); return;
     }
     if (!isStrongPassword(form.password)) {
-      setError('Password must be 8+ chars with A-Z, a-z, number & symbol.'); return;
+      setError('Password must be 8+ chars with uppercase, lowercase, number & symbol.'); return;
     }
     if (form.password !== form.confirmPassword) {
       setError('Passwords do not match.'); return;
     }
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/signup`, {
+      const res = await fetch(`${API_BASE_URL}/api/auth/signup/send-self-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
       });
-      const text = await res.text();
-      if (!res.ok) throw new Error(text || 'Signup failed');
-      setSuccess(text);
-      setShowOtp(true);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to send OTP');
+      setSuccess(data.message || 'OTP sent successfully!');
+      setStage('otp');
+      setCooldown(60);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -103,19 +116,22 @@ export default function SignupScreen({ navigation }) {
     }
   };
 
-  const verifyOtp = async () => {
+  const verifySelfOtp = async () => {
     setError(''); setSuccess('');
-    if (!otp.trim()) { setError('Enter the OTP sent to your email.'); return; }
+    if (!otp.trim()) { setError('Enter the 6-digit OTP code.'); return; }
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/verify-otp`, {
+      const res = await fetch(`${API_BASE_URL}/api/auth/signup/verify-self-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: form.email, otp }),
       });
-      const text = await res.text();
-      if (!res.ok) throw new Error(text || 'OTP verification failed');
-      setSuccess(text + ' — Wait for admin approval, then sign in.');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'OTP verification failed');
+      
+      setApproverInfo(data.approverRole ? data.approverRole.toUpperCase() : 'ADMIN');
+      setStage('pending_approval');
+      setSuccess(data.message || 'Identity verified! Signup request submitted for approval.');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -129,12 +145,16 @@ export default function SignupScreen({ navigation }) {
         <ScrollView contentContainerStyle={[authStyles.page, { justifyContent: 'flex-start', paddingTop: spacing[8] }]} keyboardShouldPersistTaps="handled">
           <View style={authStyles.card}>
             <Text style={[authStyles.title, { marginBottom: spacing[1] }]}>Create Account</Text>
-            <Text style={authStyles.subtitle}>Request access to Smart Pharma</Text>
+            <Text style={authStyles.subtitle}>
+              {stage === 'fill' && 'Step 1: Enter details to request access'}
+              {stage === 'otp' && 'Step 1 Verification: Enter code sent to your email'}
+              {stage === 'pending_approval' && 'Step 2: Account Authorization Pending'}
+            </Text>
 
             <AlertBanner type="danger"  message={error}   />
             <AlertBanner type="success" message={success} />
 
-            {!showOtp ? (
+            {stage === 'fill' && (
               <>
                 <Input label="First Name *"     value={form.firstName}     onChangeText={set('firstName')}     placeholder="First name" />
                 <Input label="Last Name *"      value={form.lastName}      onChangeText={set('lastName')}      placeholder="Last name" />
@@ -151,20 +171,49 @@ export default function SignupScreen({ navigation }) {
                 <PickerRow label="ID Proof *" options={ID_PROOFS}  value={form.idProofType} onChange={set('idProofType')} />
                 <PickerRow label="Role *"     options={ROLES}      value={form.role}        onChange={set('role')} />
 
-                <Btn label={loading ? 'Sending OTP…' : 'Send OTP'} onPress={sendOtp} loading={loading} block size="lg" />
+                <Btn label={loading ? 'Sending Verification OTP…' : 'Send Verification OTP'} onPress={sendSelfOtp} loading={loading} block size="lg" />
               </>
-            ) : (
+            )}
+
+            {stage === 'otp' && (
               <>
                 <Input
-                  label="Enter OTP sent to your email"
+                  label={`Enter 6-Digit OTP sent to ${form.email}`}
                   value={otp}
                   onChangeText={setOtp}
-                  placeholder="6-digit OTP"
+                  placeholder="6-digit OTP code"
                   keyboardType="number-pad"
                   maxLength={6}
                 />
-                <Btn label={loading ? 'Verifying…' : 'Verify OTP'} onPress={verifyOtp} loading={loading} block size="lg" variant="success" />
+                <Btn label={loading ? 'Verifying OTP…' : 'Verify OTP'} onPress={verifySelfOtp} loading={loading} block size="lg" variant="success" />
+
+                <TouchableOpacity
+                  disabled={cooldown > 0 || loading}
+                  onPress={sendSelfOtp}
+                  style={{ marginTop: spacing[3], alignItems: 'center' }}
+                >
+                  <Text style={{ fontSize: fontSize.sm, color: cooldown > 0 ? colors.muted : colors.primary, fontWeight: '600' }}>
+                    {cooldown > 0 ? `Resend OTP in ${cooldown}s` : 'Didn’t receive code? Resend OTP'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={() => setStage('fill')} style={{ marginTop: spacing[3], alignItems: 'center' }}>
+                  <Text style={{ fontSize: fontSize.sm, color: colors.muted }}>← Edit details</Text>
+                </TouchableOpacity>
               </>
+            )}
+
+            {stage === 'pending_approval' && (
+              <View style={{ alignItems: 'center', paddingVertical: spacing[4] }}>
+                <Text style={{ fontSize: 48, marginBottom: spacing[3] }}>📋</Text>
+                <Text style={{ fontSize: fontSize.lg, fontWeight: '700', color: colors.text, textAlign: 'center', marginBottom: spacing[2] }}>
+                  Identity Verified!
+                </Text>
+                <Text style={{ fontSize: fontSize.md, color: colors.muted, textAlign: 'center', marginBottom: spacing[4], lineHeight: 22 }}>
+                  Your signup request has been submitted to your <Text style={{ fontWeight: '700', color: colors.primary }}>{approverInfo}</Text> for account access approval. You will receive an email notification as soon as your account is activated.
+                </Text>
+                <Btn label="Return to Sign In" onPress={() => navigation.navigate('Login')} block size="lg" />
+              </View>
             )}
 
             <TouchableOpacity style={{ marginTop: spacing[4], alignItems: 'center' }} onPress={() => navigation.navigate('Login')}>
