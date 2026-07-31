@@ -273,10 +273,23 @@ const MONGODB_URI = (process.env.MONGODB_URI || DEFAULT_MONGODB_URI).trim();
 async function seedDefaultUsers() {
   try {
     const defaultUsers = [
-      { name: "Admin (bharath)", email: "admin@bharath.com", password: "Admin@123", role: "admin", company: "bharath" },
-      { name: "CEO (bharath)", email: "ceo@bharath.com", password: "Admin@123", role: "ceo", company: "bharath" },
-      { name: "Manager (bharath)", email: "manager@bharath.com", password: "Admin@123", role: "manager", company: "bharath" },
-      { name: "Worker (bharath)", email: "worker@bharath.com", password: "Admin@123", role: "worker", company: "bharath" },
+      // 👑 System CEO (Single CEO account for all companies)
+      { name: "System CEO", email: "ceo@system.com", password: "Admin@123", role: "ceo", company: "bharath", assignedCompany: "bharath", companyAccess: ["bharath", "shree_ganaapathy", "vel"] },
+
+      // 🏢 Bharath Enterprises
+      { name: "Admin (Bharath)", email: "admin@bharath.com", password: "Admin@123", role: "admin", company: "bharath", assignedCompany: "bharath" },
+      { name: "Manager (Bharath)", email: "manager@bharath.com", password: "Admin@123", role: "manager", company: "bharath", assignedCompany: "bharath" },
+      { name: "Worker (Bharath)", email: "worker@bharath.com", password: "Admin@123", role: "worker", company: "bharath", assignedCompany: "bharath" },
+
+      // 🏢 Shree Ganaapathy Roto Prints
+      { name: "Admin (Shree Ganaapathy)", email: "admin@shreeganaapathy.com", password: "Admin@123", role: "admin", company: "shree_ganaapathy", assignedCompany: "shree_ganaapathy" },
+      { name: "Manager (Shree Ganaapathy)", email: "manager@shreeganaapathy.com", password: "Admin@123", role: "manager", company: "shree_ganaapathy", assignedCompany: "shree_ganaapathy" },
+      { name: "Worker (Shree Ganaapathy)", email: "worker@shreeganaapathy.com", password: "Admin@123", role: "worker", company: "shree_ganaapathy", assignedCompany: "shree_ganaapathy" },
+
+      // 🏢 Vel Gravure
+      { name: "Admin (Vel)", email: "admin@vel.com", password: "Admin@123", role: "admin", company: "vel", assignedCompany: "vel" },
+      { name: "Manager (Vel)", email: "manager@vel.com", password: "Admin@123", role: "manager", company: "vel", assignedCompany: "vel" },
+      { name: "Worker (Vel)", email: "worker@vel.com", password: "Admin@123", role: "worker", company: "vel", assignedCompany: "vel" },
     ];
 
     for (const u of defaultUsers) {
@@ -285,7 +298,9 @@ async function seedDefaultUsers() {
       if (existing) {
         existing.password = hashed;
         existing.role = u.role;
-        if (!existing.company) existing.company = "bharath";
+        existing.company = u.company;
+        existing.assignedCompany = u.assignedCompany;
+        if (u.companyAccess) existing.companyAccess = u.companyAccess;
         await existing.save();
         console.log(`🌱 Reset password for default user: ${u.email} (${u.role})`);
       } else {
