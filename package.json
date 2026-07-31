@@ -3,7 +3,9 @@
   "version": "2.0.0",
   "private": true,
   "description": "Smart Pharma Management System — Express Backend, Expo Web Portal, and Expo Mobile App",
+  "main": "backend/server.js",
   "scripts": {
+    "start": "node backend/server.js",
     "start:backend": "cd backend && npm start",
     "start:web": "cd mobile && npx expo start --web",
     "start:mobile": "cd mobile && npx expo start"
