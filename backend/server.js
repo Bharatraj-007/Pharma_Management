@@ -252,10 +252,33 @@ app.get("/", (req, res) => {
 const DEFAULT_MONGODB_URI = "mongodb://127.0.0.1:27017/pharma";
 const MONGODB_URI = (process.env.MONGODB_URI || DEFAULT_MONGODB_URI).trim();
 
+async function seedDefaultUsers() {
+  try {
+    const defaultUsers = [
+      { name: "Admin (bharath)", email: "admin@bharath.com", password: "Admin@123", role: "admin", company: "bharath" },
+      { name: "CEO (bharath)", email: "ceo@bharath.com", password: "Admin@123", role: "ceo", company: "bharath" },
+      { name: "Manager (bharath)", email: "manager@bharath.com", password: "Admin@123", role: "manager", company: "bharath" },
+      { name: "Worker (bharath)", email: "worker@bharath.com", password: "Admin@123", role: "worker", company: "bharath" },
+    ];
+
+    for (const u of defaultUsers) {
+      const existing = await User.findOne({ email: u.email });
+      if (!existing) {
+        const hashed = await bcrypt.hash(u.password, 10);
+        await User.create({ ...u, password: hashed });
+        console.log(`🌱 Auto-seeded user: ${u.email} (${u.role})`);
+      }
+    }
+  } catch (err) {
+    console.error("Auto-seed error:", err.message);
+  }
+}
+
 async function connectDatabase() {
   try {
     await mongoose.connect(MONGODB_URI);
     console.log("DB Connected to", MONGODB_URI.startsWith("mongodb://127.0.0.1") ? "local MongoDB" : "MongoDB Atlas");
+    await seedDefaultUsers();
   } catch (err) {
     console.error("DB connection failed for URI:", MONGODB_URI);
     console.error(err.message || err);
@@ -265,6 +288,7 @@ async function connectDatabase() {
       try {
         await mongoose.connect(DEFAULT_MONGODB_URI);
         console.log("DB Connected to local MongoDB fallback");
+        await seedDefaultUsers();
         return;
       } catch (fallbackErr) {
         console.error("Local MongoDB fallback failed:", fallbackErr.message || fallbackErr);
@@ -461,7 +485,11 @@ function generateCylinderBarcode(size, color) {
 app.post("/login", async (req, res) => {
   const { email, password } = req.body;
 
-  const user = await User.findOne({ email });
+  let user = await User.findOne({ email });
+  if (!user) {
+    await seedDefaultUsers();
+    user = await User.findOne({ email });
+  }
   if (!user) return res.status(401).send("User not found");
 
   const match = await bcrypt.compare(password, user.password);
