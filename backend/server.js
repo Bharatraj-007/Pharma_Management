@@ -42,13 +42,13 @@ const fs = require("fs");
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME || "spqrcbtg",
-  api_key: process.env.CLOUDINARY_API_KEY || "321647567917158",
-  api_secret: process.env.CLOUDINARY_API_SECRET || "-xsYqCcE9239mjvFQYYhJJBCEGE"
+  api_key: process.env.CLOUDINARY_API_KEY || "347361382926123",
+  api_secret: process.env.CLOUDINARY_API_SECRET || "6diNOXAMw6D76uHgKZ2AsyBpdSYd"
 });
 
 const COMPANY_CLOUDINARY_FOLDERS = {
   bharath: "bharath_enterprises",
-  shree_ganaapathy: "shree_ganapathiroto",
+  shree_ganaapathy: "shri_ganaapathy_roto_prints",
   vel: "vel_gravure"
 };
 
