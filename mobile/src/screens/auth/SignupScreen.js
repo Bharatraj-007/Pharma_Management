@@ -88,8 +88,28 @@ export default function SignupScreen({ navigation }) {
 
   const sendSelfOtp = async () => {
     setError(''); setSuccess('');
-    if (!form.firstName || !form.lastName || !form.email || !form.password) {
-      setError('Please fill all required fields (Name, Email, Password).'); return;
+    if (!form.firstName.trim() || !form.lastName.trim() || !form.email.trim()) {
+      setError('First Name, Last Name, and Email are compulsory.'); return;
+    }
+    const cleanPhone = (form.phone || '').replace(/\D/g, '');
+    if (cleanPhone.length !== 10) {
+      setError('Phone number is compulsory and must be exactly 10 digits.'); return;
+    }
+    if (!form.dob || !form.age || Number(form.age) <= 0 || !form.joiningDate) {
+      setError('DOB, Age, and Date of Joining are compulsory.'); return;
+    }
+    if (!form.idProofNumber.trim()) {
+      setError('ID Proof Number is compulsory.'); return;
+    }
+    const cleanId = form.idProofNumber.trim().toUpperCase();
+    if (form.idProofType === 'aadhar') {
+      if (!/^\d{12}$/.test(cleanId)) {
+        setError('Aadhaar Card number must be exactly 12 digits (e.g. 123456789012).'); return;
+      }
+    } else if (form.idProofType === 'pan') {
+      if (!/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(cleanId)) {
+        setError('PAN Card format must be 5 letters, 4 numbers, and 1 letter (e.g. AAAPB1234C).'); return;
+      }
     }
     if (!isStrongPassword(form.password)) {
       setError('Password must be 8+ chars with uppercase, lowercase, number & symbol.'); return;

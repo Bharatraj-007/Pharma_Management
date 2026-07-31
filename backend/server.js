@@ -1950,7 +1950,29 @@ app.post(["/api/auth/signup/send-self-otp", "/signup", "/api/signup"], otpRateLi
     } = req.body;
 
     const cleanEmail = (email || "").trim().toLowerCase();
-    if (!cleanEmail) return res.status(400).json({ error: "Email is required" });
+    if (!firstName || !firstName.trim()) return res.status(400).json({ error: "First Name is compulsory" });
+    if (!lastName || !lastName.trim()) return res.status(400).json({ error: "Last Name is compulsory" });
+    if (!cleanEmail) return res.status(400).json({ error: "Email address is compulsory" });
+    if (!phone || !/^\d{10}$/.test((phone || "").trim().replace(/\D/g, ""))) {
+      return res.status(400).json({ error: "Phone number is compulsory and must be exactly 10 digits" });
+    }
+    if (!dob) return res.status(400).json({ error: "Date of Birth is compulsory" });
+    if (!age || Number(age) <= 0) return res.status(400).json({ error: "Age is compulsory" });
+    if (!joiningDate) return res.status(400).json({ error: "Date of Joining is compulsory" });
+    if (!idProofType) return res.status(400).json({ error: "ID Proof selection (Aadhaar / PAN) is compulsory" });
+    if (!idProofNumber || !idProofNumber.trim()) return res.status(400).json({ error: "ID Proof Number is compulsory" });
+
+    const cleanIdNumber = idProofNumber.trim().toUpperCase();
+    if (idProofType === "aadhar") {
+      if (!/^\d{12}$/.test(cleanIdNumber)) {
+        return res.status(400).json({ error: "Aadhaar Card number must be exactly 12 digits (e.g. 123456789012)" });
+      }
+    } else if (idProofType === "pan") {
+      // PAN format: 5 letters + 4 numbers + 1 letter (e.g. AAAPB1234C)
+      if (!/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(cleanIdNumber)) {
+        return res.status(400).json({ error: "PAN Card format must be 5 letters, 4 numbers, and 1 letter (e.g. AAAPB1234C)" });
+      }
+    }
 
     const existingUser = await User.findOne({ email: cleanEmail });
     if (existingUser) return res.status(400).json({ error: "An account with this email already exists" });
