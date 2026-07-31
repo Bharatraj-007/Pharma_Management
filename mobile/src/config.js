@@ -1,24 +1,18 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // API_BASE_URL Config Engine
 //
-// 1. Online Deployed Backend (Render / Railway / Cloud / Domain):
-//    Set process.env.EXPO_PUBLIC_API_BASE_URL or override below.
-// 2. Web Browser:
-//    Automatically detects server hostname if running in web browser.
-// 3. Local Development / Wi-Fi fallback.
+// Online Deployed Backend (Render):
+//   https://pharma-management-cpqx.onrender.com
 // ─────────────────────────────────────────────────────────────────────────────
-const ONLINE_BACKEND_URL = process.env.EXPO_PUBLIC_API_BASE_URL || '';
+const ONLINE_BACKEND_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'https://pharma-management-cpqx.onrender.com';
 
-let API_BASE_URL = 'http://10.241.15.59:5001';
+let API_BASE_URL = ONLINE_BACKEND_URL;
 
-if (ONLINE_BACKEND_URL) {
-  API_BASE_URL = ONLINE_BACKEND_URL;
-} else if (typeof window !== 'undefined' && window.location && window.location.hostname) {
+if (typeof window !== 'undefined' && window.location && window.location.hostname) {
   const host = window.location.hostname;
-  if (host !== 'localhost' && host !== '127.0.0.1') {
-    API_BASE_URL = `${window.location.protocol}//${host}:5001`;
+  if (host === 'localhost' || host === '127.0.0.1') {
+    API_BASE_URL = 'http://localhost:5001';
   }
 }
 
 export default API_BASE_URL;
-
