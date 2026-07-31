@@ -262,9 +262,15 @@ async function seedDefaultUsers() {
     ];
 
     for (const u of defaultUsers) {
+      const hashed = await bcrypt.hash(u.password, 10);
       const existing = await User.findOne({ email: u.email });
-      if (!existing) {
-        const hashed = await bcrypt.hash(u.password, 10);
+      if (existing) {
+        existing.password = hashed;
+        existing.role = u.role;
+        if (!existing.company) existing.company = "bharath";
+        await existing.save();
+        console.log(`🌱 Reset password for default user: ${u.email} (${u.role})`);
+      } else {
         await User.create({ ...u, password: hashed });
         console.log(`🌱 Auto-seeded user: ${u.email} (${u.role})`);
       }
