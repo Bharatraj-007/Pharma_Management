@@ -27,7 +27,7 @@ const ROLES = [
 ];
 
 function isStrongPassword(pwd) {
-  return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/.test(pwd);
+  return /^(?=.*\d).{8,}$/.test(pwd || '');
 }
 
 function PickerRow({ label, options, value, onChange }) {

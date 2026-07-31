@@ -586,10 +586,10 @@ app.post(["/login", "/api/login", "/api/auth/login"], async (req, res) => {
   });
 });
 
-// PASSWORD VALIDATION
+// PASSWORD VALIDATION (8+ characters, must include at least one number)
 function isStrongPassword(password) {
-  const regex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
-  return regex.test(password);
+  const regex = /^(?=.*\d).{8,}$/;
+  return regex.test(password || "");
 }
 
 const nodemailer = require("nodemailer");
@@ -1978,7 +1978,7 @@ app.post(["/api/auth/signup/send-self-otp", "/signup", "/api/signup"], otpRateLi
     if (existingUser) return res.status(400).json({ error: "An account with this email already exists" });
 
     if (!isStrongPassword(password)) {
-      return res.status(400).json({ error: "Weak password — must contain 8+ chars, uppercase, lowercase, number, special char" });
+      return res.status(400).json({ error: "Password must be at least 8 characters long and include at least one number" });
     }
 
     const hashed = await bcrypt.hash(password, 10);
