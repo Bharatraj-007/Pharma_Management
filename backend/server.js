@@ -2009,16 +2009,39 @@ app.post(["/api/auth/signup/send-self-otp", "/signup", "/api/signup"], otpRateLi
 async function sendSmsOtp(phone, otp) {
   if (!phone) return false;
   try {
+    const cleanDigits = phone.replace(/\D/g, "");
+
+    // 1. Fast2SMS (Free Indian Mobile SMS Gateway)
+    if (process.env.FAST2SMS_API_KEY && cleanDigits.length >= 10) {
+      const targetPhone = cleanDigits.slice(-10);
+      const res = await fetch("https://www.fast2sms.com/dev/bulkV2", {
+        method: "POST",
+        headers: {
+          "authorization": process.env.FAST2SMS_API_KEY,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          route: "otp",
+          variables_values: otp,
+          numbers: targetPhone
+        })
+      });
+      const data = await res.json();
+      console.log(`📱 Fast2SMS Free SMS result for ${targetPhone}:`, data.message || data);
+      return true;
+    }
+
+    // 2. Twilio (Free Trial Credits)
     if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER) {
       const twilio = require("twilio");
       const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-      const cleanPhone = phone.startsWith("+") ? phone : `+91${phone.replace(/\D/g, "")}`;
+      const cleanPhone = phone.startsWith("+") ? phone : `+91${cleanDigits.slice(-10)}`;
       await client.messages.create({
         body: `Smart Pharma verification OTP code is: ${otp}. Valid for 10 minutes.`,
         from: process.env.TWILIO_PHONE_NUMBER,
         to: cleanPhone
       });
-      console.log(`📱 SMS OTP sent via Twilio to ${cleanPhone}`);
+      console.log(`📱 Twilio SMS OTP sent via Twilio to ${cleanPhone}`);
       return true;
     }
   } catch (err) {
