@@ -2006,6 +2006,30 @@ app.post(["/api/auth/signup/send-self-otp", "/signup", "/api/signup"], otpRateLi
       });
     }
 
+async function sendSmsOtp(phone, otp) {
+  if (!phone) return false;
+  try {
+    if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER) {
+      const twilio = require("twilio");
+      const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+      const cleanPhone = phone.startsWith("+") ? phone : `+91${phone.replace(/\D/g, "")}`;
+      await client.messages.create({
+        body: `Smart Pharma verification OTP code is: ${otp}. Valid for 10 minutes.`,
+        from: process.env.TWILIO_PHONE_NUMBER,
+        to: cleanPhone
+      });
+      console.log(`📱 SMS OTP sent via Twilio to ${cleanPhone}`);
+      return true;
+    }
+  } catch (err) {
+    console.warn("SMS dispatch warning:", err.message);
+  }
+  return false;
+}
+
+    // Trigger SMS delivery if phone number is provided and SMS gateway configured
+    await sendSmsOtp(phone, selfOtp);
+
     try {
       if (transporter && transporter.sendMail) {
         await transporter.sendMail({
