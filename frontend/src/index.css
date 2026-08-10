@@ -243,10 +243,10 @@ p { color: var(--color-text-secondary); margin-bottom: var(--space-3); }
   min-height: 100%;
   background: #172033;
   color: #94a3b8;
-  padding: 16px 12px;
+  padding: 12px 10px;
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: 2px;
   border-right: 1px solid rgba(255,255,255,0.06);
   flex-shrink: 0;
   position: sticky;
@@ -257,62 +257,23 @@ p { color: var(--color-text-secondary); margin-bottom: var(--space-3); }
   box-sizing: border-box;
 }
 
-.sp-sidebar.open {
-  transform: none;
-}
-
-.sp-sidebar nav {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.sp-sidebar .nav-link-logout {
-  margin-top: auto;
-}
-
-.sp-card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: var(--space-4);
-}
-
-.sp-content {
-  flex: 1;
-  padding: 32px 40px;
-  max-width: 100%;
-  width: 100%;
-  overflow-y: auto;
-  box-sizing: border-box;
-}
-
-.sp-sidebar .sidebar-brand {
-  font-size: 20px;
-  font-weight: 800;
-  color: #fff;
-  margin-bottom: 20px;
-  letter-spacing: -0.5px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
 .sp-sidebar .user-card {
-  padding: 14px;
-  margin-bottom: 20px;
+  padding: 9px 11px;
+  margin-bottom: 8px;
   background: rgba(255,255,255,0.05);
-  border-radius: 12px;
+  border-radius: 10px;
   border: 1px solid rgba(255,255,255,0.08);
 }
 
 .sp-sidebar .user-card .user-name {
-  font-size: 14px;
+  font-size: 12.5px;
   font-weight: 700;
   color: #ffffff;
+  line-height: 1.2;
 }
 
 .sp-sidebar .user-card .user-role {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   color: #cbd5e1;
   text-transform: uppercase;
@@ -321,20 +282,20 @@ p { color: var(--color-text-secondary); margin-bottom: var(--space-3); }
 }
 
 .sp-sidebar .user-card .user-company {
-  font-size: 12px;
+  font-size: 10.5px;
   color: #e2e8f0;
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 .sp-sidebar .nav-link {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 11px 14px;
+  gap: 10px;
+  padding: 6.5px 10px;
   color: #94a3b8;
-  font-size: 14px;
+  font-size: 12.5px;
   font-weight: 600;
-  border-radius: 10px;
+  border-radius: 8px;
   transition: all var(--transition-fast);
   cursor: pointer;
 }
