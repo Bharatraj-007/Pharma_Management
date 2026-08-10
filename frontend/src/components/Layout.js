@@ -12,9 +12,10 @@ function Layout({ children }) {
   const navigate = useNavigate();
   const { hasAccess } = usePermissions();
 
-  const name = localStorage.getItem("name") || "User";
-  const role = localStorage.getItem("role") || "";
-  const companyName = localStorage.getItem("companyName");
+  const rawName = localStorage.getItem("name") || "User";
+  const role = (localStorage.getItem("role") || "").toLowerCase();
+  const name = (role === "ceo" || rawName === "System CEO") ? "CEO (Owner / System Head)" : rawName;
+  const companyName = localStorage.getItem("companyName") || "Bharath Enterprises";
   const formattedRole = role ? role.toUpperCase() : "UNKNOWN";
 
   const handleLogout = () => {

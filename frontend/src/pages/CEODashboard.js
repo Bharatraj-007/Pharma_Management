@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import API_BASE_URL from "../config";
 
 function CEODashboard() {
-  const name = localStorage.getItem("name") || "CEO";
+  const rawName = localStorage.getItem("name") || "CEO";
+  const name = (rawName === "System CEO" || rawName === "CEO") ? "CEO (Owner / System Head)" : rawName;
   const token = localStorage.getItem("token");
   const activeCompany = localStorage.getItem("activeCompany") || "bharath";
   const navigate = useNavigate();

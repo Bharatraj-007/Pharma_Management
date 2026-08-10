@@ -8,7 +8,8 @@ export default function DashboardScreen({ apiBaseUrl, session, onNavigate }) {
   const token = session?.token;
   const role = (session?.role || 'worker').toLowerCase();
   const activeCompany = session?.activeCompany || session?.company || 'bharath';
-  const name = session?.name || 'User';
+  const rawName = session?.name || 'User';
+  const name = (role === 'ceo' || rawName === 'System CEO') ? 'CEO (Owner / System Head)' : rawName;
 
   const { data, loading, error } = useDashboardData(apiBaseUrl, token, role, activeCompany);
 
