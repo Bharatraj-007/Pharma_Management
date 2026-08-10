@@ -313,7 +313,9 @@ function WebMainContainer({ session, signOut, setActiveCompany }) {
       onLogout={signOut}
       onChangeCompany={handleCompanyChange}
     >
-      {renderWebScreen()}
+      <React.Suspense fallback={<View style={{ padding: 40, alignItems: 'center' }}><ActivityIndicator size="large" color="#4f46e5" /></View>}>
+        {renderWebScreen()}
+      </React.Suspense>
     </WebLayout>
   );
 }

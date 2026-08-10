@@ -459,8 +459,8 @@ p { color: var(--color-text-secondary); margin-bottom: var(--space-3); }
 .sp-btn-primary { background: var(--color-primary); color: var(--color-surface); }
 .sp-btn-primary:hover { background: var(--color-primary-dark); box-shadow: var(--shadow-md); }
 
-.sp-btn-success { background: #047857 !important; color: #ffffff !important; font-weight: 800 !important; }
-.sp-btn-success:hover { background: #065f46 !important; color: #ffffff !important; }
+.sp-btn-success { background: #15803d !important; color: #ffffff !important; font-weight: 800 !important; }
+.sp-btn-success:hover { background: #166534 !important; color: #ffffff !important; }
 
 .sp-btn-danger { background: #b91c1c !important; color: #ffffff !important; font-weight: 800 !important; }
 .sp-btn-danger:hover { background: #991b1b !important; color: #ffffff !important; }
