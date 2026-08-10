@@ -4,8 +4,10 @@ import WebNavbar from './WebNavbar.web';
 import WebSidebar from './WebSidebar.web';
 import { webColors, webSpacing } from '../styles/webTheme';
 
-export default function WebLayout({ children, session, activeKey, onSelectKey, onLogout, onChangeCompany }) {
+export default function WebLayout({ children, session, activeKey, activeRoute, onSelectKey, onNavigate, onLogout, onChangeCompany }) {
   const [collapsed, setCollapsed] = useState(false);
+  const currentActiveKey = activeKey || activeRoute || 'dashboard';
+  const handleSelectKey = onSelectKey || onNavigate || (() => {});
 
   return (
     <View style={styles.container}>
@@ -17,8 +19,8 @@ export default function WebLayout({ children, session, activeKey, onSelectKey, o
       />
       <View style={styles.body}>
         <WebSidebar
-          activeKey={activeKey}
-          onSelectKey={onSelectKey}
+          activeKey={currentActiveKey}
+          onSelectKey={handleSelectKey}
           session={session}
           collapsed={collapsed}
           onLogout={onLogout}

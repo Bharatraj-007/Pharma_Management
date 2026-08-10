@@ -27,7 +27,10 @@ Thumbs.db
 *.log
 npm-debug.log*
 
+# Expo
+.expo/
+mobile/.expo/
+
 # Misc
-package-lock.json
 testing account.txt
 

@@ -8,6 +8,7 @@ import AccessDenied from "./components/AccessDenied";
 
 // Lazy loaded page components
 const DashboardRouter = lazy(() => import("./pages/DashboardRouter"));
+const ClientCompany = lazy(() => import("./pages/ClientCompany"));
 const Tasks = lazy(() => import("./pages/Tasks"));
 const Stock = lazy(() => import("./pages/Inventory"));
 const Dispatch = lazy(() => import("./pages/Dispatch"));
@@ -53,6 +54,7 @@ function App() {
 
           {/* Protected routes */}
           <Route path="/dashboard" element={<PrivateRoute><Layout><DashboardRouter /></Layout></PrivateRoute>} />
+          <Route path="/client-company" element={<PrivateRoute><ProtectedRoute permission="clientCompany"><Layout><ClientCompany /></Layout></ProtectedRoute></PrivateRoute>} />
           <Route path="/tasks" element={<PrivateRoute><ProtectedRoute permission="tasks"><Layout><Tasks /></Layout></ProtectedRoute></PrivateRoute>} />
           <Route path="/stock" element={<PrivateRoute><ProtectedRoute permission="stock"><Layout><Stock /></Layout></ProtectedRoute></PrivateRoute>} />
           <Route path="/products" element={<PrivateRoute><ProtectedRoute permission="products"><Layout><ProductMaster /></Layout></ProtectedRoute></PrivateRoute>} />

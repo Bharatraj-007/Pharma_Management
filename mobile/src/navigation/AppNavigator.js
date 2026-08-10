@@ -25,6 +25,7 @@ import VerifyOTPScreen from '../screens/auth/VerifyOTPScreen';
 // ── Main Screens ──────────────────────────────────────────────────────────────
 import DashboardRouter        from '../screens/dashboard/DashboardRouter';
 import ClientCompanyScreen    from '../screens/ClientCompanyScreen';
+import ClientCompanyScreenWeb from '../frontend-webui/screens/ClientCompanyScreen.web';
 import TasksScreen            from '../screens/TasksScreen';
 import InventoryScreen        from '../screens/InventoryScreen';
 import AttendanceScreen       from '../screens/AttendanceScreen';
@@ -269,7 +270,7 @@ function WebMainContainer({ session, signOut, setActiveCompany }) {
       case 'dashboard':
         return <DashboardRouter onNavigate={handleNavigate} />;
       case 'clientCompany':
-        return <ClientCompanyScreen />;
+        return <ClientCompanyScreenWeb apiBaseUrl={API_BASE_URL} session={session} />;
       case 'tasks':
         return <TasksScreen />;
       case 'stock':

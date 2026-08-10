@@ -7,6 +7,7 @@ export const ROLES = {
 
 export const PERMISSIONS = {
   dashboard: ["ceo", "admin", "manager", "worker"],
+  clientCompany: ["ceo", "admin", "manager", "worker"],
   tasks: ["ceo", "admin", "manager", "worker"],
   stock: ["ceo", "admin", "manager"],
   dispatch: ["ceo", "admin", "manager"],
@@ -33,6 +34,7 @@ export const ACTION_PERMISSIONS = {
 
 export const MENU_ITEMS = [
   { key: "dashboard", label: "Dashboard", icon: "📊", path: "/dashboard", section: "main" },
+  { key: "clientCompany", label: "Client Company", icon: "🏢", path: "/client-company", section: "main" },
   { key: "tasks", label: "Tasks", icon: "📋", path: "/tasks", section: "main" },
   { key: "stock", label: "Stock", icon: "📦", path: "/stock", section: "main" },
   { key: "products", label: "Product Master", icon: "🏷️", path: "/products", section: "main" },
