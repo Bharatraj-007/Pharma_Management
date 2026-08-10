@@ -1052,3 +1052,79 @@ p { color: var(--color-text-secondary); margin-bottom: var(--space-3); }
   color: #ffffff;
   border-color: #1d4ed8;
 }
+
+/* Reports Page Tab & KPI Styling matching user screenshot */
+.sp-report-tabs {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 6px;
+  display: inline-flex;
+  gap: 6px;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  flex-wrap: wrap;
+}
+
+.sp-report-tab {
+  padding: 8px 18px;
+  font-size: 13.5px;
+  font-weight: 600;
+  border-radius: 10px;
+  border: none;
+  background: transparent;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sp-report-tab:hover {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.sp-report-tab.active {
+  background: #1d4ed8;
+  color: #ffffff;
+  box-shadow: 0 2px 4px rgba(29, 78, 216, 0.2);
+}
+
+.sp-report-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.sp-report-kpi-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 24px 20px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.sp-report-kpi-card h2 {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 800;
+}
+
+.sp-report-kpi-card p {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.sp-report-exec-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 20px 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}

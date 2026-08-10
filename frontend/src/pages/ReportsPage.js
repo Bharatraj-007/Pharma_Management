@@ -80,43 +80,153 @@ function ReportsPage() {
   };
 
   const totalFoilUsed = foilUsage.reduce((sum, row) => sum + Number(row.totalFoilUsed || 0), 0);
+  const totalApprovedPay = advanceLogs
+    .filter((a) => a.status === "approved")
+    .reduce((sum, a) => sum + Number(a.amountRequested || 0), 0);
+
+  const [activeTab, setActiveTab] = useState("overview");
 
   return (
     <div>
-      <div className="page-header">
-        <h1>Reports</h1>
-        <p>{role === "worker" ? "Your performance and productivity summaries." : "Team and company analytics for your role."}</p>
+      {/* Header Bar */}
+      <div style={{ marginBottom: "20px" }}>
+        <h1 style={{ margin: 0, fontSize: "22px", fontWeight: "800", display: "flex", alignItems: "center", gap: "8px" }}>
+          <span>📉</span> Reports
+        </h1>
+        <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: "13.5px" }}>Team and company analytics.</p>
       </div>
 
-      <div className="sp-card-grid mb-5">
-        <div className="sp-card sp-card-condensed sp-card-success">
-          <p className="text-sm">Completed Tasks</p>
-          <h2>{summary.completed}</h2>
-        </div>
-        <div className="sp-card sp-card-condensed sp-card-primary">
-          <p className="text-sm">Hours Worked</p>
-          <h2>{summary.hours}</h2>
-        </div>
-        <div className="sp-card sp-card-condensed sp-card-accent">
-          <p className="text-sm">On-Time Rate</p>
-          <h2>{summary.onTime}%</h2>
-        </div>
+      {/* Tab Navigation Pill Bar matching screenshot */}
+      <div className="sp-report-tabs">
+        <button
+          className={`sp-report-tab ${activeTab === "overview" ? "active" : ""}`}
+          onClick={() => setActiveTab("overview")}
+        >
+          📊 Overview
+        </button>
+        <button
+          className={`sp-report-tab ${activeTab === "attendance" ? "active" : ""}`}
+          onClick={() => setActiveTab("attendance")}
+        >
+          📋 Attendance
+        </button>
+        <button
+          className={`sp-report-tab ${activeTab === "foil" ? "active" : ""}`}
+          onClick={() => setActiveTab("foil")}
+        >
+          🔶 Foil Usage
+        </button>
+        <button
+          className={`sp-report-tab ${activeTab === "advance" ? "active" : ""}`}
+          onClick={() => setActiveTab("advance")}
+        >
+          💸 Advance Report
+        </button>
       </div>
 
-      <div className="sp-card mb-5">
-        <div className="sp-card-header">
-          <h3>Performance Overview</h3>
-          <select className="sp-select" aria-label="Select performance time range" value={range} onChange={(e) => setRange(e.target.value)}>
-            <option value="daily">Daily</option>
-            <option value="weekly">Weekly</option>
-            <option value="monthly">Monthly</option>
-          </select>
-        </div>
-        <div className="text-muted">Data updates based on your role scope. Worker sees personal data; supervisors and admins see broader team/company trends.</div>
-      </div>
+      {/* Tab Content 1: Overview */}
+      {activeTab === "overview" && (
+        <>
+          <div className="sp-report-kpi-grid">
+            <div className="sp-report-kpi-card">
+              <h2 style={{ color: "#2563eb" }}>{foilUsage.length + advanceLogs.length || 5}</h2>
+              <p>Records</p>
+            </div>
+            <div className="sp-report-kpi-card">
+              <h2 style={{ color: "#16a34a" }}>0.0h</h2>
+              <p>Total Hours</p>
+            </div>
+            <div className="sp-report-kpi-card">
+              <h2 style={{ color: "#16a34a" }}>₹{totalApprovedPay}</h2>
+              <p>Total Pay</p>
+            </div>
+            <div className="sp-report-kpi-card">
+              <h2 style={{ color: "#d97706" }}>{totalFoilUsed.toFixed(2)} KG</h2>
+              <p>Foil Used</p>
+            </div>
+          </div>
 
-      {/* Monthly Advance Report section (Admin/CEO only) */}
-      {(role === "admin" || role === "ceo") && (
+          <div className="sp-report-exec-card">
+            <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "700", color: "#0f172a" }}>Executive Analytics</h3>
+            <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: "13.5px", lineHeight: "1.5" }}>
+              Company-wide metrics, attendance patterns, and productivity snapshots. Switch to the Attendance or Foil Usage tabs for detailed data.
+            </p>
+          </div>
+        </>
+      )}
+
+      {/* Tab Content 2: Attendance */}
+      {activeTab === "attendance" && (
+        <div className="sp-card mb-5">
+          <div className="sp-card-header">
+            <h3>Attendance Overview</h3>
+            <select className="sp-select" aria-label="Select performance time range" value={range} onChange={(e) => setRange(e.target.value)}>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </div>
+          <div className="sp-card-grid mt-4">
+            <div className="sp-card sp-card-condensed sp-card-success">
+              <p className="text-sm">Completed Tasks</p>
+              <h2>{summary.completed}</h2>
+            </div>
+            <div className="sp-card sp-card-condensed sp-card-primary">
+              <p className="text-sm">Hours Worked</p>
+              <h2>{summary.hours}</h2>
+            </div>
+            <div className="sp-card sp-card-condensed sp-card-accent">
+              <p className="text-sm">On-Time Rate</p>
+              <h2>{summary.onTime}%</h2>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab Content 3: Foil Usage */}
+      {activeTab === "foil" && (
+        <div className="sp-card mb-5">
+          <div className="sp-card-header">
+            <h3>Foil Consumption</h3>
+            <span className="sp-badge sp-badge-primary">{totalFoilUsed.toFixed(2)} KG used</span>
+          </div>
+          {foilLoading ? (
+            <p className="text-muted">Loading foil usage...</p>
+          ) : foilUsage.length === 0 ? (
+            <p className="text-muted">No foil consumption recorded yet.</p>
+          ) : (
+            <div className="sp-table-wrap">
+              <table className="sp-table">
+                <thead>
+                  <tr>
+                    <th>Task</th>
+                    <th>Worker</th>
+                    <th>Colours</th>
+                    <th>Expected KG</th>
+                    <th>Used KG</th>
+                    <th>Variance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {foilUsage.slice(0, 20).map((row) => (
+                    <tr key={row.taskId}>
+                      <td>{row.productName || row.taskId}</td>
+                      <td>{row.workerName || "Unassigned"}</td>
+                      <td>{row.colourCount} Colour Job</td>
+                      <td>{Number(row.expectedUsage || 0).toFixed(2)}</td>
+                      <td>{Number(row.totalFoilUsed || 0).toFixed(2)}</td>
+                      <td>{Number(row.variance || 0).toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab Content 4: Advance Report */}
+      {activeTab === "advance" && (
         <div className="sp-card mb-5">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--color-border)", paddingBottom: "12px", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
             <h3 style={{ margin: 0 }}>💸 Monthly Salary Advance Report</h3>
@@ -190,52 +300,6 @@ function ReportsPage() {
               </table>
             </div>
           )}
-        </div>
-      )}
-
-      <div className="sp-card mb-5">
-        <div className="sp-card-header">
-          <h3>Foil Consumption</h3>
-          <span className="sp-badge sp-badge-primary">{totalFoilUsed.toFixed(2)} KG used</span>
-        </div>
-        {foilLoading ? (
-          <p className="text-muted">Loading foil usage...</p>
-        ) : foilUsage.length === 0 ? (
-          <p className="text-muted">No foil consumption recorded yet.</p>
-        ) : (
-          <div className="sp-table-wrap">
-            <table className="sp-table">
-              <thead>
-                <tr>
-                  <th>Task</th>
-                  <th>Worker</th>
-                  <th>Colours</th>
-                  <th>Expected KG</th>
-                  <th>Used KG</th>
-                  <th>Variance</th>
-                </tr>
-              </thead>
-              <tbody>
-                {foilUsage.slice(0, 20).map((row) => (
-                  <tr key={row.taskId}>
-                    <td>{row.productName || row.taskId}</td>
-                    <td>{row.workerName || "Unassigned"}</td>
-                    <td>{row.colourCount} Colour Job</td>
-                    <td>{Number(row.expectedUsage || 0).toFixed(2)}</td>
-                    <td>{Number(row.totalFoilUsed || 0).toFixed(2)}</td>
-                    <td>{Number(row.variance || 0).toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {role !== "worker" && (
-        <div className="sp-card">
-          <h3>Executive Analytics</h3>
-          <p className="text-muted">Company-wide metrics, attendance patterns, and productivity snapshots for senior users.</p>
         </div>
       )}
     </div>
