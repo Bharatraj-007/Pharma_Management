@@ -307,41 +307,36 @@ function ClientCompany() {
           ) : filteredCompanies.length === 0 ? (
             <p style={{ color: "#64748b", fontSize: "13px" }}>No client companies found.</p>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "16px" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "16px" }}>
               {filteredCompanies.map((comp) => (
                 <div
                   key={comp._id}
                   onClick={() => setSelectedCompany(comp)}
                   className="sp-card-interactive"
                   style={{
+                    width: "260px",
                     padding: "16px",
                     borderRadius: "12px",
-                    border: "1px solid var(--color-border)",
-                    backgroundColor: "#f8fafc",
+                    border: "1px solid #cbd5e1",
+                    backgroundColor: "#f1f5f9",
                     cursor: "pointer",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "8px",
                     transition: "all 0.2s ease"
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                     <span style={{ fontSize: "24px" }}>🏢</span>
-                    <h4 style={{ margin: 0, fontSize: "16px", fontWeight: "800", color: "#1e293b", flex: 1 }}>
+                    <h4 style={{ margin: 0, fontSize: "16px", fontWeight: "800", color: "#1e293b", flex: 1, lineHeight: "1.2" }}>
                       {comp.name}
                     </h4>
-                    {isAdminOrCeo && (
-                      <button
-                        onClick={(e) => handleDeleteCompany(comp._id, e)}
-                        style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "14px" }}
-                        title="Delete Company"
-                      >
-                        🗑️
-                      </button>
-                    )}
                   </div>
-                  <p style={{ margin: 0, fontSize: "12px", color: "#64748b", marginBottom: "12px" }}>
+                  <p style={{ margin: 0, fontSize: "12px", color: "#64748b" }}>
                     Click to view Products & CDR Samples
                   </p>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span className="sp-badge sp-badge-neutral" style={{ fontSize: "10px", fontWeight: "700" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "8px" }}>
+                    <span style={{ fontSize: "11px", fontWeight: "700", color: "#334155", backgroundColor: "#e2e8f0", padding: "3px 8px", borderRadius: "10px" }}>
                       Active Client
                     </span>
                     <span style={{ fontSize: "10px", color: "#94a3b8" }}>
