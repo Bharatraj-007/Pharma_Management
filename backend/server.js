@@ -277,8 +277,8 @@ if (fs.existsSync(frontendBuildPath)) {
   app.use(express.static(frontendBuildPath));
 }
 
-app.get("/api-status", (req, res) => {
-  res.json({ message: "🚀 Smart Pharma Backend Running Successfully", status: "OK" });
+app.get(["/", "/api-status"], (req, res) => {
+  res.json({ message: "🚀 Smart Pharma Backend Running Successfully", status: "OK", version: "2.0.0" });
 });
 
 
