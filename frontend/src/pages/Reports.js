@@ -228,14 +228,14 @@ function Reports() {
                 <div className="sp-form-row">
                   <div className="sp-form-group">
                     <label className="sp-label">Worker *</label>
-                    <select value={markForm.workerName} onChange={e => setMarkForm({ ...markForm, workerName: e.target.value })} className="sp-select" required>
+                    <select aria-label="Select worker" value={markForm.workerName} onChange={e => setMarkForm({ ...markForm, workerName: e.target.value })} className="sp-select" required>
                       <option value="">Select Worker</option>
                       {workers.map(w => <option key={w._id} value={w.name}>{w.employeeNo ? `${w.employeeNo} - ` : ""}{w.name} ({w.role})</option>)}
                     </select>
                   </div>
                   <div className="sp-form-group">
                     <label className="sp-label">Status *</label>
-                    <select value={markForm.status} onChange={e => setMarkForm({ ...markForm, status: e.target.value })} className="sp-select">
+                    <select aria-label="Select attendance status" value={markForm.status} onChange={e => setMarkForm({ ...markForm, status: e.target.value })} className="sp-select">
                       <option value="present">✅ Present</option>
                       <option value="absent">❌ Absent</option>
                       <option value="half-day">⏰ Half Day</option>
@@ -264,12 +264,12 @@ function Reports() {
                 <div className="text-sm text-muted">Filter by worker, status, or date range before exporting.</div>
               </div>
               <div className="flex gap-2 items-center flex-wrap">
-                <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="sp-input" style={{ width: "auto" }} />
-                <select value={filterWorker} onChange={e => setFilterWorker(e.target.value)} className="sp-select" style={{ width: 220 }}>
+                <input type="date" aria-label="Select attendance date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="sp-input" style={{ width: "auto" }} />
+                <select aria-label="Filter by worker" value={filterWorker} onChange={e => setFilterWorker(e.target.value)} className="sp-select" style={{ width: 220 }}>
                   <option value="">All workers</option>
                   {workers.map(w => <option key={w._id} value={w.name}>{w.employeeNo ? `${w.employeeNo} - ` : ""}{w.name}</option>)}
                 </select>
-                <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="sp-select" style={{ width: 160 }}>
+                <select aria-label="Filter by status" value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="sp-select" style={{ width: 160 }}>
                   <option value="">All statuses</option>
                   <option value="present">Present</option>
                   <option value="absent">Absent</option>
@@ -398,7 +398,7 @@ function Reports() {
                           <td><span className={getStatusBadge(s.role === "ceo" ? "absent" : s.role === "admin" ? "late" : s.role === "manager" ? "half-day" : "present")}>{s.role?.toUpperCase()}</span></td>
                           <td>
                             {salaryEditing === s._id ? (
-                              <select value={salaryForm.salaryType} onChange={e => setSalaryForm({ ...salaryForm, salaryType: e.target.value })} className="sp-select" style={{ width: 120 }}>
+                              <select aria-label="Select salary type" value={salaryForm.salaryType} onChange={e => setSalaryForm({ ...salaryForm, salaryType: e.target.value })} className="sp-select" style={{ width: 120 }}>
                                 <option value="daily">Per Day</option>
                                 <option value="hourly">Per Hour</option>
                                 <option value="monthly">Fixed Monthly</option>

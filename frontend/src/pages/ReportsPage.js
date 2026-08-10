@@ -105,7 +105,7 @@ function ReportsPage() {
       <div className="sp-card mb-5">
         <div className="sp-card-header">
           <h3>Performance Overview</h3>
-          <select className="sp-select" value={range} onChange={(e) => setRange(e.target.value)}>
+          <select className="sp-select" aria-label="Select performance time range" value={range} onChange={(e) => setRange(e.target.value)}>
             <option value="daily">Daily</option>
             <option value="weekly">Weekly</option>
             <option value="monthly">Monthly</option>
@@ -122,6 +122,7 @@ function ReportsPage() {
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
               <input
                 type="month"
+                aria-label="Select report month"
                 className="sp-input"
                 style={{ width: "auto", marginBottom: 0, padding: "6px 12px" }}
                 value={reportMonth}
