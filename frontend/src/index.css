@@ -459,14 +459,14 @@ p { color: var(--color-text-secondary); margin-bottom: var(--space-3); }
 .sp-btn-primary { background: var(--color-primary); color: var(--color-surface); }
 .sp-btn-primary:hover { background: var(--color-primary-dark); box-shadow: var(--shadow-md); }
 
-.sp-btn-success { background: #059669; color: #ffffff; font-weight: 700; }
-.sp-btn-success:hover { background: var(--color-success-dark); }
+.sp-btn-success { background: #047857; color: #ffffff; font-weight: 800; }
+.sp-btn-success:hover { background: #065f46; color: #ffffff; }
 
-.sp-btn-danger { background: #dc2626; color: #ffffff; font-weight: 700; }
-.sp-btn-danger:hover { background: var(--color-danger-dark); }
+.sp-btn-danger { background: #b91c1c; color: #ffffff; font-weight: 800; }
+.sp-btn-danger:hover { background: #991b1b; color: #ffffff; }
 
-.sp-btn-warning { background: var(--color-warning); color: #ffffff; font-weight: 700; }
-.sp-btn-warning:hover { background: var(--color-warning-dark); color: #fff; }
+.sp-btn-warning { background: #f59e0b; color: #0f172a; font-weight: 800; }
+.sp-btn-warning:hover { background: #d97706; color: #0f172a; }
 
 .sp-btn-secondary { background: var(--color-surface-alt); color: var(--color-text); border-color: var(--color-border); }
 .sp-btn-secondary:hover { background: var(--color-border); }

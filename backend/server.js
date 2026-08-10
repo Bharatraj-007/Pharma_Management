@@ -218,6 +218,8 @@ async function createAndSendNotification(userId, type, message, payload = {}) {
     console.error("Error creating/sending notification:", err);
   }
 }
+const compression = require("compression");
+app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 const allowedOrigins = [
   "http://localhost:3000",

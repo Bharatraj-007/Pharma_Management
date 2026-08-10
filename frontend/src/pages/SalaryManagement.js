@@ -16,7 +16,7 @@ function SalaryManagement() {
 
       <div className="sp-card">
         <div className="sp-card-header">
-          <h3>Salary Structures</h3>
+          <h2>Salary Structures</h2>
         </div>
         <div className="sp-table-wrap">
           <table className="sp-table">
