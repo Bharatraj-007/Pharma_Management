@@ -270,10 +270,15 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 const qrRoutes = require('./routes/qrRoutes');
 app.use('/qrs', qrRoutes);
 
-app.get("/", (req, res) => {
+const frontendBuildPath = path.join(__dirname, '../frontend/build');
+if (fs.existsSync(frontendBuildPath)) {
+  app.use(express.static(frontendBuildPath));
+}
 
-  res.send("🚀 Smart Pharma Backend Running Successfully");
+app.get("/api-status", (req, res) => {
+  res.json({ message: "🚀 Smart Pharma Backend Running Successfully", status: "OK" });
 });
+
 
 const DEFAULT_MONGODB_URI = "mongodb://127.0.0.1:27017/pharma";
 const MONGODB_URI = (process.env.MONGODB_URI || DEFAULT_MONGODB_URI).trim();
@@ -5064,7 +5069,30 @@ app.delete("/staff/:id", verifyToken, allowRoles("admin", "ceo"), async (req, re
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// 🌐 Serve React SPA for non-API client routes
+
+if (fs.existsSync(frontendBuildPath)) {
+  app.get("*", (req, res, next) => {
+    const isApiRoute = req.path.startsWith("/api") || 
+                       req.path.startsWith("/qrs") || 
+                       req.path.startsWith("/uploads") || 
+                       req.path.startsWith("/attendance") || 
+                       req.path.startsWith("/workers") || 
+                       req.path.startsWith("/tasks") || 
+                       req.path.startsWith("/staff") || 
+                       req.path.startsWith("/leaves") || 
+                       req.path.startsWith("/holidays") || 
+                       req.path.startsWith("/inventory") || 
+                       req.path.startsWith("/audit-logs");
+    if (isApiRoute) {
+      return next();
+    }
+    res.sendFile(path.join(frontendBuildPath, "index.html"));
+  });
+}
+
 const PORT = process.env.PORT || 5001;
+
 
 
 connectDatabase().then(() => {
