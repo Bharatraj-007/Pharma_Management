@@ -13,13 +13,7 @@ export default function DashboardScreen({ apiBaseUrl, session, onNavigate }) {
 
   const { data, loading, error } = useDashboardData(apiBaseUrl, token, role, activeCompany);
 
-  if (loading && !data) {
-    return (
-      <View style={styles.loadingBox}>
-        <Text style={styles.loadingText}>⏳ Loading Smart Pharma Dashboard...</Text>
-      </View>
-    );
-  }
+
 
   const companyName = data?.companyName || 'Bharath Enterprises';
   const totalUsers = data?.totalUsers ?? 0;

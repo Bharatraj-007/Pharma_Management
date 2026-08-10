@@ -42,14 +42,7 @@ function AdminDashboard() {
     };
   }, [token, fetchData]);
 
-  if (loading) {
-    return (
-      <div className="sp-loading-container">
-        <div className="sp-loading-spinner"></div>
-        <p className="sp-loading-text">Loading Admin Dashboard...</p>
-      </div>
-    );
-  }
+
 
   const companyName = data?.companyName || "Bharath Enterprises";
   const totalUsers = data?.totalUsers ?? 0;

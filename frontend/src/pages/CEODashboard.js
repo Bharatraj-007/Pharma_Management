@@ -39,13 +39,7 @@ function CEODashboard() {
     };
   }, [fetchData]);
 
-  if (loading && !data) {
-    return (
-      <div className="sp-loading-container" style={{ padding: "40px", textCenter: "center" }}>
-        <p className="sp-loading-text">⏳ Loading Smart Pharma CEO Dashboard...</p>
-      </div>
-    );
-  }
+
 
   const companyName = data?.companyName || "Bharath Enterprises";
   const totalUsers = data?.totalUsers ?? 0;
