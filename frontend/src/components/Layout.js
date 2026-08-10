@@ -87,14 +87,6 @@ function Layout({ children }) {
     <div className={`sp-layout${sidebarOpen ? " sp-layout-sidebar-open" : ""}`}>
       {/* Sidebar - Persistent on laptop, slides in on mobile */}
       <aside className={`sp-sidebar${sidebarOpen ? " open" : ""}`}>
-        <div className="sidebar-brand">Smart Pharma</div>
-
-        <div className="user-card">
-          <div className="user-name">{name}</div>
-          <div className="user-role">{formattedRole}</div>
-          {companyName && <div className="user-company">{companyName}</div>}
-        </div>
-
         <SidebarMenu onNavigate={closeSidebar} />
 
         {/* Sidebar Logout (Pushed to bottom via margin-top: auto) */}

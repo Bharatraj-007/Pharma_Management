@@ -239,11 +239,11 @@ p { color: var(--color-text-secondary); margin-bottom: var(--space-3); }
   display: none;
 }
 .sp-sidebar {
-  width: 250px;
+  width: 240px;
   min-height: 100%;
   background: #172033;
   color: #94a3b8;
-  padding: 20px 16px;
+  padding: 16px 12px;
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -254,6 +254,7 @@ p { color: var(--color-text-secondary); margin-bottom: var(--space-3); }
   transition: transform var(--transition-base), box-shadow var(--transition-base);
   transform: none;
   z-index: 120;
+  box-sizing: border-box;
 }
 
 .sp-sidebar.open {
