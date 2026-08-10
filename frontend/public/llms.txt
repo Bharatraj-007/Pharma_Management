@@ -1,13 +1,12 @@
 # Smart Pharma System
 
-> High-performance pharmaceutical management enterprise system for inventory, production, dispatch, task tracking, and salary management.
+> Enterprise Inventory, Task, Production, and Salary Management System for Pharmaceutical Operations.
 
-## System Modules
-- **Dashboard**: Real-time company statistics, task progress, and user status.
-- **Client Company**: Manage client companies and product specifications.
-- **Tasks**: Assign, track, and verify daily production tasks.
-- **Inventory**: Foil and cylinder stock monitoring with barcode scanning.
-- **Dispatch**: Track shipments, invoices, and delivery status.
-- **Finance & P&L**: Profit and loss overview, transaction logs, and revenue.
-- **Attendance & Leave**: Geofenced check-in, leave requests, and attendance logs.
-- **Reports**: Daily production, foil usage, and advance salary reports.
+## Overview
+Smart Pharma System provides automated workflows for inventory tracking, production dispatch, attendance management, and salary advances across multi-company operations.
+
+## Features
+- **Dashboard**: Real-time KPI summaries for tasks, inventory, and attendance.
+- **Inventory Management**: Track foil stock, plastic stock, and cylinder inventory.
+- **Task Dispatch**: Generate QR codes, dispatch shipments, and track worker task progress.
+- **Attendance & HR**: Shift logging, leave approvals, and monthly salary advance management.

@@ -39,6 +39,14 @@ try {
   }
 
   copyFolderRecursive(distDir, targetBuildDir);
+
+  // 5. Copy llms.txt if present
+  const llmsSource = path.join(__dirname, 'frontend', 'public', 'llms.txt');
+  const llmsTarget = path.join(targetBuildDir, 'llms.txt');
+  if (fs.existsSync(llmsSource)) {
+    fs.copyFileSync(llmsSource, llmsTarget);
+  }
+
   console.log("✅ Expo Web (localhost:8081 1:1 match) successfully exported to frontend/build!");
 } catch (err) {
   console.error("❌ Build error:", err.message);

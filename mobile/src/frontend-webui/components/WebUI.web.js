@@ -136,7 +136,7 @@ const styles = StyleSheet.create({
   btn_danger: { backgroundColor: webColors.danger },
   btnText_danger: { color: '#ffffff', fontWeight: '700' },
   btn_warning: { backgroundColor: webColors.warning },
-  btnText_warning: { color: '#0f172a', fontWeight: '800' },
+  btnText_warning: { color: '#ffffff', fontWeight: '800' },
   btnDisabled: { opacity: 0.5 },
   btnText: { fontSize: webFontSize.base },
 
