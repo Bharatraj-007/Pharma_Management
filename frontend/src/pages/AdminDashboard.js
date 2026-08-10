@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import API_BASE_URL from "../config";
+import API_BASE_URL, { safeJson } from "../config";
 
 function AdminDashboard() {
   const adminName = localStorage.getItem("name") || "Admin";
@@ -17,7 +17,7 @@ function AdminDashboard() {
         headers: { Authorization: token },
       });
       if (!res.ok) throw new Error("Unable to load dashboard information");
-      const json = await res.json();
+      const json = await safeJson(res);
       setData(json);
     } catch (err) {
       setError(err.message || "Unable to load dashboard information");

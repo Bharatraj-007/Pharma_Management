@@ -6,5 +6,15 @@ const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || (
     : "http://localhost:5001"
 );
 
+export async function safeJson(res) {
+  try {
+    const text = await res.text();
+    if (!text || !text.trim()) return {};
+    return JSON.parse(text);
+  } catch (err) {
+    return {};
+  }
+}
+
 export default API_BASE_URL;
 
