@@ -17,11 +17,11 @@
   --color-accent-light: #22d3ee;
 
   /* Success / Warning / Danger */
-  --color-success: #10b981;
+  --color-success: #059669;
   --color-success-light: #d1fae5;
-  --color-warning: #f59e0b;
+  --color-warning: #d97706;
   --color-warning-light: #fef3c7;
-  --color-danger: #ef4444;
+  --color-danger: #dc2626;
   --color-danger-light: #fee2e2;
 
   /* Neutrals */
@@ -312,7 +312,7 @@ p { color: var(--color-text-secondary); margin-bottom: var(--space-3); }
 .sp-sidebar .user-card .user-role {
   font-size: 11px;
   font-weight: 700;
-  color: #64748b;
+  color: #cbd5e1;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-top: 2px;
@@ -320,7 +320,7 @@ p { color: var(--color-text-secondary); margin-bottom: var(--space-3); }
 
 .sp-sidebar .user-card .user-company {
   font-size: 12px;
-  color: #94a3b8;
+  color: #e2e8f0;
   margin-top: 4px;
 }
 
@@ -494,13 +494,13 @@ p { color: var(--color-text-secondary); margin-bottom: var(--space-3); }
 .sp-btn-primary { background: var(--color-primary); color: var(--color-surface); }
 .sp-btn-primary:hover { background: var(--color-primary-dark); box-shadow: var(--shadow-md); }
 
-.sp-btn-success { background: var(--color-success); color: var(--color-surface); }
+.sp-btn-success { background: #059669; color: #ffffff; font-weight: 700; }
 .sp-btn-success:hover { background: var(--color-success-dark); }
 
-.sp-btn-danger { background: var(--color-danger); color: var(--color-surface); }
+.sp-btn-danger { background: #dc2626; color: #ffffff; font-weight: 700; }
 .sp-btn-danger:hover { background: var(--color-danger-dark); }
 
-.sp-btn-warning { background: var(--color-warning); color: var(--color-text); }
+.sp-btn-warning { background: var(--color-warning); color: #ffffff; font-weight: 700; }
 .sp-btn-warning:hover { background: var(--color-warning-dark); color: #fff; }
 
 .sp-btn-secondary { background: var(--color-surface-alt); color: var(--color-text); border-color: var(--color-border); }
@@ -522,8 +522,8 @@ p { color: var(--color-text-secondary); margin-bottom: var(--space-3); }
 .sp-btn-nav:hover { background: rgba(255,255,255,0.1); }
 .sp-btn-nav-solid { background: var(--color-primary); color: #fff; }
 .sp-btn-nav-solid:hover { background: var(--color-primary-light); }
-.sp-btn-nav-danger { background: var(--color-danger); color: #fff; }
-.sp-btn-nav-danger:hover { background: #dc2626; }
+.sp-btn-nav-danger { background: #b91c1c; color: #ffffff; font-weight: 700; }
+.sp-btn-nav-danger:hover { background: #991b1b; }
 
 /* ---------- 10. FORMS ---------- */
 .sp-form-group {
