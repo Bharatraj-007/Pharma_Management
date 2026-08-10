@@ -32,10 +32,12 @@ function Tasks() {
 
   useEffect(() => {
     fetchWorkers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     fetchTasks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedWorkerFilter]);
 
   const fetchWorkers = async () => {

@@ -82,6 +82,7 @@ function ClientCompany() {
 
   useEffect(() => {
     if (token) fetchCompanies();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   useEffect(() => {
@@ -89,6 +90,7 @@ function ClientCompany() {
       fetchProducts(selectedCompany.name);
       fetchTaskFiles(selectedCompany.name, selectedProduct?.name || "");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, selectedCompany, selectedProduct]);
 
   const handleCreateCompany = async (e) => {

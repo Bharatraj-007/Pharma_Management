@@ -98,6 +98,7 @@ function Attendance() {
 
   useEffect(() => {
     if (localStorage.getItem("token")) {
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       fetchSalaryDetails();
       fetchPendingAdvances();
     }

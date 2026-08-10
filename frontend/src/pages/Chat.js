@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { io } from "socket.io-client";
 import API_BASE_URL from "../config";
-import { usePermissions } from "../hooks/usePermissions";
 
 function getUserIdFromToken(token) {
   if (!token) return null;
@@ -30,25 +29,18 @@ function Chat() {
   const [activeConv, setActiveConv] = useState(null);
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
 
   // Modals / Searches
   const [usersList, setUsersList] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [showNewChatModal, setShowNewChatModal] = useState(false);
-  const [showGroupModal, setShowGroupModal] = useState(false);
-  
-  // Group Create Form
+  const [createGroupModal, setCreateGroupModal] = useState(false);
   const [groupName, setGroupName] = useState("");
-  const [selectedGroupMembers, setSelectedGroupMembers] = useState([]);
+  const [selectedMembers, setSelectedMembers] = useState([]);
 
   // Socket
   const [socket, setSocket] = useState(null);
-  const [onlineUsers, setOnlineUsers] = useState([]);
-
   const messagesEndRef = useRef(null);
 
   const headers = {
@@ -56,59 +48,39 @@ function Chat() {
     Authorization: token
   };
 
-  // 1. Initialize Socket Connection
+  // 1. Initialize Socket.IO connection
   useEffect(() => {
-    if (!myUserId || !token) return;
+    if (!myUserId) return;
 
-    const activeSocket = window.socket || io(API_BASE_URL.replace("/api", ""), {
-      transports: ["polling", "websocket"]
+    const activeSocket = io(API_BASE_URL, {
+      transports: ["websocket", "polling"],
+      query: { userId: myUserId }
     });
-    
-    if (!window.socket) {
-      window.socket = activeSocket;
-    }
-
-    activeSocket.emit("join", myUserId);
-
-    const handleOnlineUsers = (users) => {
-      setOnlineUsers(users);
-    };
-
-    const handleNewMessage = (msg) => {
-      setMessages((prev) => {
-        if (prev.some(m => m._id === msg._id)) return prev;
-        if (String(msg.conversationId) === String(activeConv?.id || activeConv?._id)) {
-          return [...prev, msg];
-        }
-        return prev;
-      });
-      loadConversations();
-    };
-
-    const handleMessageDeleted = (data) => {
-      setMessages((prev) => prev.map(m => {
-        if (String(m._id) === String(data.messageId)) {
-          return { ...m, deletedForEveryone: true, deletedByName: data.deletedByName, text: null, mediaUrl: null, fileName: null };
-        }
-        return m;
-      }));
-    };
-
-    activeSocket.on("online_users", handleOnlineUsers);
-    activeSocket.on("new_message", handleNewMessage);
-    activeSocket.on("message_deleted", handleMessageDeleted);
-    
-    if (activeConv) {
-      activeSocket.emit("join_room", activeConv.id || activeConv._id);
-    }
 
     setSocket(activeSocket);
 
+    // Socket events
+    activeSocket.on("connect", () => {
+      activeSocket.emit("user_connected", myUserId);
+    });
+
+    activeSocket.on("receive_message", (newMsg) => {
+      if (activeConv && (newMsg.conversationId === activeConv._id || newMsg.conversationId === activeConv.id)) {
+        setMessages((prev) => [...prev, newMsg]);
+      }
+      loadConversations();
+    });
+
+    activeSocket.on("message_deleted", (deletedMsgId) => {
+      setMessages((prev) => prev.filter((m) => (m.id || m._id) !== deletedMsgId));
+    });
+
     return () => {
-      activeSocket.off("online_users", handleOnlineUsers);
-      activeSocket.off("new_message", handleNewMessage);
-      activeSocket.off("message_deleted", handleMessageDeleted);
+      activeSocket.off("receive_message");
+      activeSocket.off("message_deleted");
+      activeSocket.disconnect();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myUserId, activeConv]);
 
   // 2. Fetch Conversations List
@@ -120,6 +92,7 @@ function Chat() {
         setConversations(data);
       }
     } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myUserId, token]);
 
   // 3. Fetch Company Users List
@@ -131,13 +104,13 @@ function Chat() {
         setUsersList(data);
       }
     } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   useEffect(() => {
     if (token) {
       loadConversations();
       loadUsersList();
-      setLoading(false);
     }
   }, [token, loadConversations, loadUsersList]);
 
@@ -162,6 +135,7 @@ function Chat() {
     }
 
     loadHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeConv, socket]);
 
   // Scroll to bottom

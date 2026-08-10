@@ -53,6 +53,7 @@ function ReportsPage() {
 
   useEffect(() => {
     fetchAdvanceReport();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reportMonth, role]);
 
   const handleDownload = async (format) => {
