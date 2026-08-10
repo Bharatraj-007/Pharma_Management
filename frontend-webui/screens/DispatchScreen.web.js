@@ -49,6 +49,28 @@ export default function DispatchScreen({ apiBaseUrl, session }) {
   const [from, setFrom] = useState(today);
   const [to, setTo] = useState(today);
 
+  // Client Companies state for pre-defined selection
+  const [clientCompanies, setClientCompanies] = useState([]);
+  const [destMode, setDestMode] = useState('predefined'); // 'predefined' | 'manual'
+
+  useEffect(() => {
+    const fetchClientCompanies = async () => {
+      if (!token) return;
+      try {
+        const res = await fetch(`${apiBaseUrl}/api/client-companies`, {
+          headers: { Authorization: token }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setClientCompanies(Array.isArray(data) ? data : []);
+        }
+      } catch (e) {
+        console.error("Error fetching client companies:", e);
+      }
+    };
+    fetchClientCompanies();
+  }, [token, apiBaseUrl]);
+
   const companyTitle = effectiveCompany === 'shree_ganaapathy'
     ? 'Company 2 — Shree Ganaapathy Roto Prints'
     : effectiveCompany === 'vel'
@@ -195,7 +217,55 @@ export default function DispatchScreen({ apiBaseUrl, session }) {
               <WebInput label="Destination Type" value={destinationType} onChangeText={setDestinationType} placeholder="External Client / Customer" />
             </View>
             <View style={styles.halfWidth}>
-              <WebInput label="Destination Company Name *" value={destinationCompany} onChangeText={setDestinationCompany} placeholder="e.g. Sun Pharma / Cipla Ltd" />
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <Text style={styles.label}>Destination Company Name *</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    const nextMode = destMode === 'predefined' ? 'manual' : 'predefined';
+                    setDestMode(nextMode);
+                    if (nextMode === 'manual') setDestinationCompany('');
+                  }}
+                  style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: '#eef2ff', borderWidth: 1, borderColor: '#c7d2fe' }}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#4f46e5' }}>
+                    {destMode === 'predefined' ? '✏️ Enter Manually' : '📋 Select Pre-defined Client'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {destMode === 'predefined' && clientCompanies.length > 0 ? (
+                <View style={{ marginBottom: 8 }}>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 6 }}>
+                    <View style={{ flexDirection: 'row', gap: 6 }}>
+                      {clientCompanies.map((c) => {
+                        const active = destinationCompany === c.name;
+                        return (
+                          <TouchableOpacity
+                            key={c._id || c.name}
+                            style={[styles.catalogChip, active && styles.catalogChipActive]}
+                            onPress={() => setDestinationCompany(c.name)}
+                          >
+                            <Text style={[styles.catalogChipText, active && styles.catalogChipActiveText]}>
+                              🏢 {c.name}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </ScrollView>
+                  <WebInput
+                    value={destinationCompany}
+                    onChangeText={setDestinationCompany}
+                    placeholder="Selected Client / Type Company Name..."
+                  />
+                </View>
+              ) : (
+                <WebInput
+                  value={destinationCompany}
+                  onChangeText={setDestinationCompany}
+                  placeholder="e.g. Sun Pharma / Cipla Ltd (Manual Entry)"
+                />
+              )}
             </View>
 
             <View style={styles.halfWidth}>

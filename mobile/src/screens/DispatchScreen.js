@@ -67,7 +67,24 @@ export default function DispatchScreen(props) {
   const [newProdName, setNewProdName] = useState('');
   const [newProdSize, setNewProdSize] = useState('');
   const [newProdWeight, setNewProdWeight] = useState('');
-  const [newProdColors, setNewProdColors] = useState('1');
+  // Client Companies state for pre-defined selection
+  const [clientCompanies, setClientCompanies] = useState([]);
+
+  useEffect(() => {
+    const fetchClientCompanies = async () => {
+      if (!token) return;
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/client-companies`, {
+          headers: { Authorization: token },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setClientCompanies(Array.isArray(data) ? data : []);
+        }
+      } catch (e) {}
+    };
+    fetchClientCompanies();
+  }, [token]);
   const [addingProduct, setAddingProduct] = useState(false);
 
   // Report State
@@ -425,7 +442,27 @@ export default function DispatchScreen(props) {
             <TextInput style={s.input} placeholder="e.g. 5" keyboardType="numeric" value={quantity} onChangeText={setQuantity} />
 
             <Text style={s.label}>Destination Company *</Text>
-            <TextInput style={s.input} placeholder="e.g. Sun Pharma" value={destinationCompany} onChangeText={setDestinationCompany} />
+            {clientCompanies.length > 0 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  {clientCompanies.map((c) => {
+                    const active = destinationCompany === c.name;
+                    return (
+                      <TouchableOpacity
+                        key={c._id || c.name}
+                        style={[s.catalogChip, active && s.catalogChipActive]}
+                        onPress={() => setDestinationCompany(c.name)}
+                      >
+                        <Text style={[s.catalogChipText, active && s.catalogChipActiveText]}>
+                          🏢 {c.name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+            )}
+            <TextInput style={s.input} placeholder="e.g. Sun Pharma / Type Custom Company" value={destinationCompany} onChangeText={setDestinationCompany} />
 
             <Text style={s.label}>Delivery Method *</Text>
             <TextInput style={s.input} placeholder="e.g. Rapido / VRL / A1 Transport" value={deliveryMethod} onChangeText={setDeliveryMethod} />

@@ -84,6 +84,26 @@ function Dispatch() {
     }
   }, [token, currentCompany]);
 
+  const [clientCompanies, setClientCompanies] = useState([]);
+  const [destMode, setDestMode] = useState("predefined"); // 'predefined' | 'manual'
+
+  useEffect(() => {
+    const fetchClientCompanies = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/client-companies`, {
+          headers: { Authorization: token }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setClientCompanies(Array.isArray(data) ? data : []);
+        }
+      } catch (e) {
+        console.error("Error fetching client companies:", e);
+      }
+    };
+    if (token) fetchClientCompanies();
+  }, [token]);
+
   useEffect(() => {
     fetchProducts();
   }, [fetchProducts]);
@@ -518,15 +538,72 @@ function Dispatch() {
             </div>
 
             <div className="sp-form-group">
-              <label className="sp-label">Destination Company Name *</label>
-              <input
-                type="text"
-                className="sp-input"
-                placeholder="e.g. Sun Pharma / Cipla Ltd"
-                value={destinationCompany}
-                onChange={(e) => setDestinationCompany(e.target.value)}
-                required
-              />
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                <label className="sp-label" style={{ margin: 0 }}>Destination Company Name *</label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextMode = destMode === "predefined" ? "manual" : "predefined";
+                    setDestMode(nextMode);
+                    if (nextMode === "manual") setDestinationCompany("");
+                  }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--color-primary)",
+                    fontSize: "12px",
+                    fontWeight: "bold",
+                    cursor: "pointer",
+                    textDecoration: "underline"
+                  }}
+                >
+                  {destMode === "predefined" ? "✏️ Write Manually" : "📋 Select Pre-defined Client"}
+                </button>
+              </div>
+
+              {destMode === "predefined" && clientCompanies.length > 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                  <select
+                    className="sp-select"
+                    value={destinationCompany}
+                    onChange={(e) => {
+                      if (e.target.value === "__manual__") {
+                        setDestMode("manual");
+                        setDestinationCompany("");
+                      } else {
+                        setDestinationCompany(e.target.value);
+                      }
+                    }}
+                    required
+                  >
+                    <option value="">-- Select Pre-defined Client Company --</option>
+                    {clientCompanies.map((c) => (
+                      <option key={c._id || c.name} value={c.name}>
+                        🏢 {c.name}
+                      </option>
+                    ))}
+                    <option value="__manual__">✏️ Write Manually / Custom Client...</option>
+                  </select>
+                  {destinationCompany && (
+                    <input
+                      type="text"
+                      className="sp-input"
+                      value={destinationCompany}
+                      onChange={(e) => setDestinationCompany(e.target.value)}
+                      placeholder="Selected client (editable)..."
+                    />
+                  )}
+                </div>
+              ) : (
+                <input
+                  type="text"
+                  className="sp-input"
+                  placeholder="e.g. Sun Pharma / Cipla Ltd"
+                  value={destinationCompany}
+                  onChange={(e) => setDestinationCompany(e.target.value)}
+                  required
+                />
+              )}
             </div>
 
             <div className="sp-form-group">
