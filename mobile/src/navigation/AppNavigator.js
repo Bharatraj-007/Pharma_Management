@@ -232,7 +232,7 @@ function MainDrawer() {
       <Drawer.Screen name="Leave"            component={LeaveScreen}            options={{ title: '🗓️ Leave' }} />
       <Drawer.Screen name="Reports"          component={ReportsScreen}          options={{ title: '📈 Reports' }} />
       <Drawer.Screen name="Chat"             component={ChatScreen}             options={{ title: '💬 Messages' }} />
-      <Drawer.Screen name="Settings"         component={SettingsScreen}         options={{ title: '⚙️ Settings' }} />
+      <Drawer.Screen name="Settings"         component={ProfileScreen}          options={{ title: '⚙️ Settings' }} />
       <Drawer.Screen name="UserManagement"   component={UserManagementScreen}   options={{ title: '👥 Users' }} />
       <Drawer.Screen name="SignupRequests"   component={SignupRequestsScreen}   options={{ title: '📝 Signup Requests' }} />
       <Drawer.Screen name="AuditLogs"        component={AuditLogsScreen}        options={{ title: '🔍 Audit Logs' }} />
@@ -291,7 +291,7 @@ function WebMainContainer({ session, signOut, setActiveCompany }) {
       case 'chat':
         return <ChatScreen />;
       case 'settings':
-        return <SettingsScreen />;
+        return <ProfileScreen />;
       case 'users':
         return <UserManagementScreen />;
       case 'signupRequests':
