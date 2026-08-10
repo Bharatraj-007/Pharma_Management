@@ -112,34 +112,41 @@ function Navbar() {
             ☰
           </button>
         )}
-        <div className="sp-navbar-brand">
-          <h2>💊 Smart Pharma</h2>
+        <div className="sp-navbar-brand" style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <h2 style={{ margin: 0 }}>💊 Smart Pharma</h2>
           {localStorage.getItem("role") === "ceo" ? (
-            <select
-              value={localStorage.getItem("activeCompany") || company || "all"}
-              onChange={(e) => {
-                const val = e.target.value;
-                localStorage.setItem("activeCompany", val);
-                window.dispatchEvent(new Event("companyChanged"));
-                window.location.reload();
-              }}
-              style={{
-                marginLeft: '12px',
-                padding: '4px 10px',
-                borderRadius: '6px',
-                border: '1px solid var(--color-primary)',
-                fontWeight: 'bold',
-                fontSize: '13px',
-                backgroundColor: '#eff6ff',
-                color: 'var(--color-primary)',
-                cursor: 'pointer'
-              }}
-            >
-              <option value="all">🏢 All Companies (CEO Overview)</option>
-              <option value="bharath">Bharath Enterprises (Company 1)</option>
-              <option value="shree_ganaapathy">Shree Ganaapathy Roto Prints (Company 2)</option>
-              <option value="vel">Vel Gravure (Company 3)</option>
-            </select>
+            <div style={{ display: "flex", gap: "6px" }}>
+              {[
+                { code: "bharath", label: "Bharath Enterprises (Company 1)" },
+                { code: "shree_ganaapathy", label: "Shree Ganaapathy (Company 2)" },
+                { code: "vel", label: "Vel Gravure (Company 3)" }
+              ].map((item) => {
+                const activeCo = localStorage.getItem("activeCompany") || company || "bharath";
+                const active = activeCo === item.code;
+                return (
+                  <button
+                    key={item.code}
+                    onClick={() => {
+                      localStorage.setItem("activeCompany", item.code);
+                      window.dispatchEvent(new Event("companyChanged"));
+                      window.location.reload();
+                    }}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: "8px",
+                      backgroundColor: active ? "#eef2ff" : "#ffffff",
+                      border: `1px solid ${active ? "#4f46e5" : "#cbd5e1"}`,
+                      color: active ? "#4f46e5" : "#1e293b",
+                      fontWeight: "700",
+                      fontSize: "12px",
+                      cursor: "pointer"
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
           ) : (
             company && <span className="company-badge">{getCompanyName(company)}</span>
           )}
