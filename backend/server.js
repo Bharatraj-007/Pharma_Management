@@ -282,7 +282,7 @@ async function seedDefaultUsers() {
   try {
     const defaultUsers = [
       // 👑 System CEO (Single CEO account for all companies)
-      { name: "System CEO", email: "ceo@system.com", password: "Admin@123", role: "ceo", company: "bharath", assignedCompany: "bharath", companyAccess: ["bharath", "shree_ganaapathy", "vel"] },
+      { name: "CEO (Owner / System Head)", email: "ceo@system.com", password: "Admin@123", role: "ceo", company: "bharath", assignedCompany: "bharath", companyAccess: ["bharath", "shree_ganaapathy", "vel"] },
 
       // 🏢 Bharath Enterprises
       { name: "Admin (Bharath)", email: "admin@bharath.com", password: "Admin@123", role: "admin", company: "bharath", assignedCompany: "bharath" },
