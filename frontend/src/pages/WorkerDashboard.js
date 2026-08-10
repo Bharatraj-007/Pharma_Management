@@ -1,5 +1,4 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { Html5Qrcode } from "html5-qrcode";
 import API_BASE_URL from "../config";
 
 function WorkerDashboard() {
@@ -66,6 +65,7 @@ function WorkerDashboard() {
     // Small delay to ensure DOM element is ready
     setTimeout(async () => {
       try {
+        const { Html5Qrcode } = await import("html5-qrcode");
         const html5QrCode = new Html5Qrcode(containerId);
         scannerRef.current = html5QrCode;
         setScanningTaskId(taskId);

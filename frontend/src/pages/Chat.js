@@ -62,7 +62,7 @@ function Chat() {
     if (!myUserId || !token) return;
 
     const activeSocket = window.socket || io(API_BASE_URL.replace("/api", ""), {
-      transports: ["websocket", "polling"]
+      transports: ["polling", "websocket"]
     });
     
     if (!window.socket) {

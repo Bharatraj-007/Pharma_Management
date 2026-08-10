@@ -46,7 +46,7 @@ function Layout({ children }) {
 
     if (!window.socket) {
       const newSocket = io(socketUrl, {
-        transports: ["websocket", "polling"]
+        transports: ["polling", "websocket"]
       });
 
       newSocket.on("connect", () => {
