@@ -29,6 +29,8 @@ function Tasks() {
 
   const [workers, setWorkers] = useState([]);
   const [selectedWorkerFilter, setSelectedWorkerFilter] = useState("All");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
 
   useEffect(() => {
     fetchWorkers();
@@ -283,57 +285,118 @@ function Tasks() {
     return { totalAssigned: total, totalCompleted: completed, totalPending: pending };
   }, [tasks]);
 
+  const filteredTasks = useMemo(() => {
+    return tasks.filter((t) => {
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "pending" && (t.status === "pending" || !t.status)) ||
+        (statusFilter === "in-progress" && t.status === "in-progress") ||
+        (statusFilter === "completed" && t.status === "completed");
+
+      const q = searchQuery.toLowerCase().trim();
+      const matchesSearch =
+        !q ||
+        [t.product_name, t.worker_name, t.size, t.company, t.clientCompany, t.foil_type]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(q);
+
+      return matchesStatus && matchesSearch;
+    });
+  }, [tasks, statusFilter, searchQuery]);
+
   return (
     <div>
-      <div className="page-header">
-        <h1>📋 Tasks</h1>
-      </div>
-
-      {/* Employee/Manager Filter Dropdown */}
-      <div className="sp-card mb-5" style={{ background: "var(--color-surface-alt)", padding: "20px", borderRadius: "8px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-          <label className="sp-label" style={{ margin: 0, fontWeight: 700 }}>🔍 Filter by Employee/Manager:</label>
-          <select
-            className="sp-select"
-            value={selectedWorkerFilter}
-            onChange={(e) => setSelectedWorkerFilter(e.target.value)}
-            style={{ width: "auto", minWidth: "220px" }}
+      {/* Header Bar with Title and Top-Right + New Button */}
+      <div className="flex items-center justify-between mb-4">
+        <h1 style={{ margin: 0, fontSize: "22px", fontWeight: "800", display: "flex", alignItems: "center", gap: "8px" }}>
+          <span>📋</span> Tasks
+        </h1>
+        {isManager && (
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="sp-btn sp-btn-success"
+            style={{ borderRadius: "20px", padding: "6px 18px", fontWeight: "700", display: "flex", alignItems: "center", gap: "4px" }}
           >
-            <option value="All">🌐 Show All Tasks</option>
-            {workers.map((w) => (
-              <option key={w._id} value={w._id}>
-                👤 {w.name} ({w.role})
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {selectedWorkerFilter !== "All" && (
-          <div className="sp-card-grid mt-4" style={{ gridTemplateColumns: "repeat(3, 1fr)", gap: "16px" }}>
-            <div className="sp-card" style={{ background: "#fff", textAlign: "center", padding: "16px", borderRadius: "6px" }}>
-              <h2 style={{ margin: 0, color: "var(--color-primary)", fontSize: "2rem" }}>{totalAssigned}</h2>
-              <span className="text-muted text-xs uppercase font-bold tracking-wider">Total Assigned</span>
-            </div>
-            <div className="sp-card" style={{ background: "#fff", textAlign: "center", padding: "16px", borderRadius: "6px" }}>
-              <h2 style={{ margin: 0, color: "var(--color-success)", fontSize: "2rem" }}>{totalCompleted}</h2>
-              <span className="text-muted text-xs uppercase font-bold tracking-wider">Tasks Completed</span>
-            </div>
-            <div className="sp-card" style={{ background: "#fff", textAlign: "center", padding: "16px", borderRadius: "6px" }}>
-              <h2 style={{ margin: 0, color: "var(--color-warning)", fontSize: "2rem" }}>{totalPending}</h2>
-              <span className="text-muted text-xs uppercase font-bold tracking-wider">Tasks Pending</span>
-            </div>
-          </div>
+            {showForm ? "✖ Close" : "➕ New"}
+          </button>
         )}
       </div>
 
-      {isManager && (
-        <div className="mb-5">
+      {/* Search and Status Filter Pill Card matching screenshot */}
+      <div className="sp-filter-card">
+        <input
+          type="text"
+          className="sp-search-bar"
+          placeholder="🔍 Search product, worker, company..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+        <div className="sp-filter-pills">
           <button
-            onClick={() => setShowForm(!showForm)}
-            className={`sp-btn ${showForm ? 'sp-btn-secondary' : 'sp-btn-success'}`}
+            className={`sp-filter-pill ${statusFilter === "all" ? "active" : ""}`}
+            onClick={() => setStatusFilter("all")}
           >
-            {showForm ? "✖ Hide Form" : "➕ Create New Task"}
+            All Tasks
           </button>
+          <button
+            className={`sp-filter-pill ${statusFilter === "pending" ? "active" : ""}`}
+            onClick={() => setStatusFilter("pending")}
+          >
+            Pending
+          </button>
+          <button
+            className={`sp-filter-pill ${statusFilter === "in-progress" ? "active" : ""}`}
+            onClick={() => setStatusFilter("in-progress")}
+          >
+            In Progress
+          </button>
+          <button
+            className={`sp-filter-pill ${statusFilter === "completed" ? "active" : ""}`}
+            onClick={() => setStatusFilter("completed")}
+          >
+            Completed
+          </button>
+        </div>
+      </div>
+
+      {/* Employee/Manager Filter Dropdown */}
+      {isManager && (
+        <div className="sp-card mb-5" style={{ background: "var(--color-surface-alt)", padding: "14px 20px", borderRadius: "8px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+            <label className="sp-label" style={{ margin: 0, fontWeight: 700 }}>👤 Assigned Worker Filter:</label>
+            <select
+              className="sp-select"
+              value={selectedWorkerFilter}
+              onChange={(e) => setSelectedWorkerFilter(e.target.value)}
+              style={{ width: "auto", minWidth: "200px", padding: "6px 12px" }}
+            >
+              <option value="All">🌐 Show All Workers</option>
+              {workers.map((w) => (
+                <option key={w._id} value={w._id}>
+                  👤 {w.name} ({w.role})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {selectedWorkerFilter !== "All" && (
+            <div className="sp-card-grid mt-3" style={{ gridTemplateColumns: "repeat(3, 1fr)", gap: "12px" }}>
+              <div className="sp-card" style={{ background: "#fff", textAlign: "center", padding: "12px", borderRadius: "6px" }}>
+                <h2 style={{ margin: 0, color: "var(--color-primary)", fontSize: "1.6rem" }}>{totalAssigned}</h2>
+                <span className="text-muted text-xs uppercase font-bold tracking-wider">Total Assigned</span>
+              </div>
+              <div className="sp-card" style={{ background: "#fff", textAlign: "center", padding: "12px", borderRadius: "6px" }}>
+                <h2 style={{ margin: 0, color: "var(--color-success)", fontSize: "1.6rem" }}>{totalCompleted}</h2>
+                <span className="text-muted text-xs uppercase font-bold tracking-wider">Tasks Completed</span>
+              </div>
+              <div className="sp-card" style={{ background: "#fff", textAlign: "center", padding: "12px", borderRadius: "6px" }}>
+                <h2 style={{ margin: 0, color: "var(--color-warning)", fontSize: "1.6rem" }}>{totalPending}</h2>
+                <span className="text-muted text-xs uppercase font-bold tracking-wider">Tasks Pending</span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -365,8 +428,8 @@ function Tasks() {
             />
           </div>
 
-            <div className="sp-form-group">
-              <label className="sp-label">Foil Type *</label>
+          <div className="sp-form-group">
+            <label className="sp-label">Foil Type *</label>
             <select
               value={formData.foil_type}
               onChange={(e) => setFormData({ ...formData, foil_type: e.target.value })}
@@ -452,11 +515,15 @@ function Tasks() {
       )}
 
       <div>
-        <h2 className="mb-4">Task List ({tasks.length})</h2>
-        {tasks.length === 0 ? (
-          <p className="text-muted">{isManager ? "No tasks yet. Create one above!" : "No tasks. Check with manager."}</p>
+        <h3 style={{ fontSize: "14px", fontWeight: "700", color: "#1e293b", marginBottom: "16px" }}>
+          Task List ({filteredTasks.length})
+        </h3>
+        {filteredTasks.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "32px 16px", color: "#64748b", fontSize: "14px" }}>
+            No matching tasks found.
+          </div>
         ) : (
-          tasks.map(task => (
+          filteredTasks.map(task => (
             <div key={task._id} className="sp-card mb-4 animate-fade">
               <div className="flex items-center justify-between mb-3">
                 <h3>{task.product_name || 'Stock Task'}</h3>
