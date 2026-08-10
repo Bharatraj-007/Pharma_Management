@@ -6,7 +6,7 @@
   "main": "backend/server.js",
   "scripts": {
     "start": "node backend/server.js",
-    "build": "cd frontend && npm install && npm run build",
+    "build": "node build-expo-web.js",
     "postinstall": "cd backend && npm install",
     "start:backend": "cd backend && npm start",
     "start:web": "cd mobile && npx expo start --web",
