@@ -562,10 +562,10 @@ app.post(["/login", "/api/login", "/api/auth/login"], async (req, res) => {
     await seedDefaultUsers();
     user = await User.findOne({ email });
   }
-  if (!user) return res.status(401).send("User not found");
+  if (!user) return res.status(401).json({ error: "User not found" });
 
   const match = await bcrypt.compare(password, user.password);
-  if (!match) return res.status(401).send("Wrong password");
+  if (!match) return res.status(401).json({ error: "Wrong password" });
 
   const assignedCompany = user.assignedCompany || user.company || 'bharath';
   const companyAccess = (user.companyAccess && user.companyAccess.length)

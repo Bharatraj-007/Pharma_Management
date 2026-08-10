@@ -15,22 +15,34 @@ function Login() {
         body: JSON.stringify({ email, password })
       });
 
+      const text = await res.text();
+      let data = {};
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        data = {};
+      }
+
       if (!res.ok) {
-        alert("Login failed");
+        alert(data.error || text || "Login failed. Please check your credentials.");
         return;
       }
 
-      const data = await res.json();
+      if (!data.token) {
+        alert("Login failed: Server response did not contain a valid access token.");
+        return;
+      }
+
       localStorage.setItem("token", data.token);
       localStorage.setItem("role", data.role);
       localStorage.setItem("name", data.name);
-      if (data.id) localStorage.setItem("userId", data.id);
+      if (data.id || data.userId) localStorage.setItem("userId", data.id || data.userId);
       if (data.company) localStorage.setItem("company", data.company);
       if (data.companyName) localStorage.setItem("companyName", data.companyName);
 
       window.location.href = "/dashboard";
     } catch (err) {
-      alert("Error: " + err.message);
+      alert("Login Error: " + (err.message || "Network error. Please try again."));
     } finally {
       setLoading(false);
     }
