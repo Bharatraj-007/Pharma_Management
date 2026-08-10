@@ -20,8 +20,20 @@ const MENU_ITEMS = [
 ];
 
 export default function WebSidebar({ session, activeRoute, onNavigate, onLogout }) {
+  const name = session?.name || 'CEO (Owner / System Head)';
+  const role = (session?.role || 'CEO').toUpperCase();
+  const rawCompany = session?.companyName || session?.company || 'Bharath Enterprises';
+  const company = rawCompany === 'bharath' ? 'Bharath Enterprises' : rawCompany === 'shree_ganaapathy' ? 'Shree Ganaapathy Roto Prints' : rawCompany === 'vel' ? 'Vel Gravure' : rawCompany;
+
   return (
     <View style={styles.sidebar}>
+      {/* Brand & User Card */}
+      <View style={styles.userCard}>
+        <Text style={styles.userName}>{name}</Text>
+        <Text style={styles.userRole}>{role}</Text>
+        <Text style={styles.userCompany}>{company}</Text>
+      </View>
+
       {/* Nav Menu Items */}
       <ScrollView style={styles.menuContainer} showsVerticalScrollIndicator={false}>
         {MENU_ITEMS.map((item) => {
