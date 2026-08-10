@@ -278,8 +278,8 @@ p { color: var(--color-text-secondary); margin-bottom: var(--space-3); }
 
 .sp-content {
   flex: 1;
-  padding: var(--space-8);
-  max-width: 1200px;
+  padding: 32px 40px;
+  max-width: 1400px;
   overflow-y: auto;
   width: 100%;
 }
