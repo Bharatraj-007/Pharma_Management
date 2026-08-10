@@ -13,12 +13,15 @@ function ClientCompany() {
 
   const [selectedCompany, setSelectedCompany] = useState(null);
   const [products, setProducts] = useState([]);
-  const [newProductName, setNewProductName] = useState("");
   const [selectedProduct, setSelectedProduct] = useState(null);
-
   const [taskFiles, setTaskFiles] = useState([]);
+  const [newProductName, setNewProductName] = useState("");
+
   const [showAddCompanyModal, setShowAddCompanyModal] = useState(false);
   const [showAddProductModal, setShowAddProductModal] = useState(false);
+  const [previewPdfUrl, setPreviewPdfUrl] = useState(null);
+  const [folderUploading, setFolderUploading] = useState(false);
+  const [uploadStatusMsg, setUploadStatusMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
 
   const fetchCompanies = async (query = "") => {
@@ -152,18 +155,58 @@ function ClientCompany() {
     }
   };
 
+  const handleFolderUpload = async (e) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setFolderUploading(true);
+    setUploadStatusMsg(`Uploading ${files.length} CDR sample files across 2-level directory structure...`);
+
+    const formData = new FormData();
+    const relativePaths = [];
+
+    for (let i = 0; i < files.length; i++) {
+      formData.append("files", files[i]);
+      relativePaths.push(files[i].webkitRelativePath || files[i].name);
+    }
+    formData.append("relativePaths", JSON.stringify(relativePaths));
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/task-files/upload-folder`, {
+        method: "POST",
+        headers: { Authorization: token },
+        body: formData
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Folder upload failed");
+      setUploadStatusMsg(data.message || "Folder uploaded & structure extracted!");
+      fetchCompanies();
+      if (selectedCompany) {
+        fetchProducts(selectedCompany.name);
+        fetchTaskFiles(selectedCompany.name, selectedProduct?.name || "");
+      }
+    } catch (err) {
+      alert(`Upload error: ${err.message}`);
+    } finally {
+      setFolderUploading(false);
+    }
+  };
+
+  const filteredCompanies = companies.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
+
   return (
     <div className="sp-page-container">
-      <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+      {/* Header */}
+      <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "20px" }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: "24px" }}>🏢 Client Company Master Hub</h1>
-          <p style={{ margin: "4px 0 0", color: "var(--color-text-muted)", fontSize: "14px" }}>
-            Manage client accounts, registered products, and CDR sample files.
+          <h1 style={{ margin: 0, fontSize: "26px", fontWeight: "800", color: "#1e293b" }}>🏢 Client Company Master Hub</h1>
+          <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: "14px" }}>
+            Manage client companies, product subfolders, and CorelDRAW CDR sample files independently.
           </p>
         </div>
         {isAdminOrCeo && (
           <button className="sp-btn sp-btn-primary" onClick={() => setShowAddCompanyModal(true)}>
-            + Add Client Company
+            + Add Company
           </button>
         )}
       </div>
@@ -174,183 +217,240 @@ function ClientCompany() {
         </div>
       )}
 
-      {/* Top Search Filter */}
+      {/* Top Search Input */}
       <div className="sp-card" style={{ marginBottom: "20px", padding: "16px" }}>
-        <div style={{ display: "flex", gap: "12px" }}>
-          <input
-            type="text"
-            className="sp-input"
-            placeholder="🔍 Search client company name..."
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              fetchCompanies(e.target.value);
-            }}
-            style={{ flex: 1 }}
-          />
-        </div>
+        <input
+          type="text"
+          className="sp-input"
+          placeholder="🔍 Search client companies..."
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            fetchCompanies(e.target.value);
+          }}
+          style={{ width: "100%", maxWidth: "450px" }}
+        />
       </div>
 
-      {/* Main Grid: Left = Companies List, Right = Details / Products / Task Files */}
-      <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: "20px" }}>
-        {/* Companies Column */}
-        <div className="sp-card" style={{ padding: "16px", maxHeight: "650px", overflowY: "auto" }}>
-          <h3 style={{ marginTop: 0, marginBottom: "12px", fontSize: "16px" }}>Client Companies ({companies.length})</h3>
+      {/* Bulk Upload Banner */}
+      {isAdminOrCeo && (
+        <div className="sp-card" style={{ marginBottom: "20px", padding: "18px 24px", backgroundColor: "#ffffff" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
+            <div>
+              <h4 style={{ margin: 0, fontSize: "14px", fontWeight: "800", color: "#1e293b" }}>
+                📁 Bulk Upload Folder Structure (<code style={{ backgroundColor: "#f1f5f9", padding: "2px 6px", borderRadius: "4px" }}>CompanyName / ProductName / sample.cdr</code>)
+              </h4>
+              <p style={{ margin: "4px 0 0", fontSize: "12px", color: "#64748b" }}>
+                Upload your local folder tree containing 10+ companies and product subfolders in a single action.
+              </p>
+            </div>
+            <input
+              type="file"
+              webkitdirectory="true"
+              directory="true"
+              multiple
+              onChange={handleFolderUpload}
+              style={{ fontSize: "12px" }}
+            />
+          </div>
+          {folderUploading && (
+            <p style={{ margin: "8px 0 0", fontSize: "12px", fontWeight: "bold", color: "var(--color-primary)" }}>
+              ⏳ {uploadStatusMsg}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Breadcrumb Navigation */}
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px", fontSize: "14px" }}>
+        <span
+          onClick={() => { setSelectedCompany(null); setSelectedProduct(null); }}
+          style={{
+            cursor: "pointer",
+            fontWeight: !selectedCompany ? "800" : "600",
+            color: !selectedCompany ? "var(--color-primary)" : "#64748b"
+          }}
+        >
+          All Client Companies ({companies.length})
+        </span>
+        {selectedCompany && (
+          <>
+            <span style={{ color: "#94a3b8" }}>›</span>
+            <span
+              onClick={() => setSelectedProduct(null)}
+              style={{
+                cursor: "pointer",
+                fontWeight: !selectedProduct ? "800" : "600",
+                color: !selectedProduct ? "var(--color-primary)" : "#64748b"
+              }}
+            >
+              🏢 {selectedCompany.name}
+            </span>
+          </>
+        )}
+        {selectedProduct && (
+          <>
+            <span style={{ color: "#94a3b8" }}>›</span>
+            <span style={{ fontWeight: "800", color: "var(--color-primary)" }}>
+              📦 {selectedProduct.name}
+            </span>
+          </>
+        )}
+      </div>
+
+      {/* Level 1: Client Companies Grid */}
+      {!selectedCompany ? (
+        <div className="sp-card" style={{ padding: "20px" }}>
+          <h3 style={{ marginTop: 0, marginBottom: "16px", fontSize: "16px", fontWeight: "700" }}>Client Companies Master</h3>
           {loading ? (
-            <p style={{ color: "var(--color-text-muted)" }}>Loading companies...</p>
-          ) : companies.length === 0 ? (
-            <p style={{ color: "var(--color-text-muted)", fontSize: "13px" }}>No client companies found.</p>
+            <p style={{ color: "#64748b" }}>⏳ Loading client companies...</p>
+          ) : filteredCompanies.length === 0 ? (
+            <p style={{ color: "#64748b", fontSize: "13px" }}>No client companies found.</p>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              {companies.map((comp) => {
-                const isSelected = selectedCompany?._id === comp._id;
-                return (
-                  <div
-                    key={comp._id}
-                    onClick={() => {
-                      setSelectedCompany(comp);
-                      setSelectedProduct(null);
-                    }}
-                    style={{
-                      padding: "12px",
-                      borderRadius: "8px",
-                      border: `1px solid ${isSelected ? "var(--color-primary)" : "var(--color-border)"}`,
-                      backgroundColor: isSelected ? "#eff6ff" : "#ffffff",
-                      cursor: "pointer",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      transition: "all 0.15s ease"
-                    }}
-                  >
-                    <div>
-                      <span style={{ fontWeight: isSelected ? "700" : "500", color: isSelected ? "var(--color-primary)" : "inherit" }}>
-                        🏢 {comp.name}
-                      </span>
-                    </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "16px" }}>
+              {filteredCompanies.map((comp) => (
+                <div
+                  key={comp._id}
+                  onClick={() => setSelectedCompany(comp)}
+                  className="sp-card-interactive"
+                  style={{
+                    padding: "16px",
+                    borderRadius: "12px",
+                    border: "1px solid var(--color-border)",
+                    backgroundColor: "#f8fafc",
+                    cursor: "pointer",
+                    transition: "all 0.2s ease"
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
+                    <span style={{ fontSize: "24px" }}>🏢</span>
+                    <h4 style={{ margin: 0, fontSize: "16px", fontWeight: "800", color: "#1e293b", flex: 1 }}>
+                      {comp.name}
+                    </h4>
                     {isAdminOrCeo && (
                       <button
                         onClick={(e) => handleDeleteCompany(comp._id, e)}
-                        style={{
-                          background: "none",
-                          border: "none",
-                          color: "#ef4444",
-                          cursor: "pointer",
-                          fontSize: "14px",
-                          padding: "2px 6px"
-                        }}
-                        title="Delete company"
+                        style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "14px" }}
+                        title="Delete Company"
                       >
                         🗑️
                       </button>
                     )}
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Right Details Panel */}
-        <div>
-          {!selectedCompany ? (
-            <div className="sp-card" style={{ padding: "40px", textAlign: "center", color: "var(--color-text-muted)" }}>
-              <h3>👈 Select a Client Company from the left panel</h3>
-              <p>Select any company to view registered products, job designs, and CDR files.</p>
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-              {/* Selected Company Header */}
-              <div className="sp-card" style={{ padding: "20px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div>
-                    <h2 style={{ margin: 0, color: "var(--color-primary)" }}>🏢 {selectedCompany.name}</h2>
-                    <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
-                      Registered Client Account
+                  <p style={{ margin: 0, fontSize: "12px", color: "#64748b", marginBottom: "12px" }}>
+                    Click to view Products & CDR Samples
+                  </p>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span className="sp-badge sp-badge-neutral" style={{ fontSize: "10px", fontWeight: "700" }}>
+                      Active Client
+                    </span>
+                    <span style={{ fontSize: "10px", color: "#94a3b8" }}>
+                      Added {new Date(comp.createdAt).toLocaleDateString()}
                     </span>
                   </div>
-                  {isAdminOrCeo && (
-                    <button className="sp-btn sp-btn-secondary sp-btn-sm" onClick={() => setShowAddProductModal(true)}>
-                      + Add Product
-                    </button>
-                  )}
                 </div>
-              </div>
-
-              {/* Registered Products */}
-              <div className="sp-card" style={{ padding: "20px" }}>
-                <h3 style={{ marginTop: 0, marginBottom: "12px" }}>🏷️ Products under {selectedCompany.name}</h3>
-                {products.length === 0 ? (
-                  <p style={{ color: "var(--color-text-muted)", fontSize: "13px" }}>No products added yet for this client.</p>
-                ) : (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                    <button
-                      onClick={() => setSelectedProduct(null)}
-                      className={`sp-btn ${selectedProduct === null ? "sp-btn-primary" : "sp-btn-secondary"} sp-btn-sm`}
-                    >
-                      All Products ({products.length})
-                    </button>
-                    {products.map((p) => (
-                      <button
-                        key={p._id}
-                        onClick={() => setSelectedProduct(p)}
-                        className={`sp-btn ${selectedProduct?._id === p._id ? "sp-btn-primary" : "sp-btn-secondary"} sp-btn-sm`}
-                      >
-                        {p.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Task / CDR Files */}
-              <div className="sp-card" style={{ padding: "20px" }}>
-                <h3 style={{ marginTop: 0, marginBottom: "12px" }}>
-                  📁 CDR & Artwork Files {selectedProduct ? `(Product: ${selectedProduct.name})` : ""}
-                </h3>
-                {taskFiles.length === 0 ? (
-                  <p style={{ color: "var(--color-text-muted)", fontSize: "13px" }}>No sample artwork or CDR files found.</p>
-                ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                    {taskFiles.map((file) => (
-                      <div
-                        key={file._id}
-                        style={{
-                          padding: "12px",
-                          borderRadius: "6px",
-                          border: "1px solid var(--color-border)",
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center"
-                        }}
-                      >
-                        <div>
-                          <div style={{ fontWeight: "600", fontSize: "14px" }}>📄 {file.fileName}</div>
-                          <div style={{ fontSize: "12px", color: "var(--color-text-muted)", marginTop: "2px" }}>
-                            Product: {file.productName || "General"} | Uploaded: {new Date(file.uploadedAt).toLocaleDateString()}
-                          </div>
-                        </div>
-                        {file.fileUrl && (
-                          <a
-                            href={`${API_BASE_URL}${file.fileUrl}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="sp-btn sp-btn-secondary sp-btn-sm"
-                          >
-                            ⬇️ Download File
-                          </a>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              ))}
             </div>
           )}
         </div>
-      </div>
+      ) : (
+        /* Level 2 & 3: Products & Samples for Selected Company */
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          {/* Products Filter Bar */}
+          <div className="sp-card" style={{ padding: "20px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px" }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", flex: 1, alignItems: "center" }}>
+                <button
+                  onClick={() => setSelectedProduct(null)}
+                  className={`sp-btn ${selectedProduct === null ? "sp-btn-primary" : "sp-btn-secondary"} sp-btn-sm`}
+                  style={{ borderRadius: "20px", padding: "6px 14px", fontSize: "12px" }}
+                >
+                  All Products ({products.length})
+                </button>
+                {products.map((p) => (
+                  <button
+                    key={p._id}
+                    onClick={() => setSelectedProduct(p)}
+                    className={`sp-btn ${selectedProduct?._id === p._id ? "sp-btn-primary" : "sp-btn-secondary"} sp-btn-sm`}
+                    style={{ borderRadius: "20px", padding: "6px 14px", fontSize: "12px" }}
+                  >
+                    📦 {p.name}
+                  </button>
+                ))}
+              </div>
+              {isAdminOrCeo && (
+                <button className="sp-btn sp-btn-secondary sp-btn-sm" onClick={() => setShowAddProductModal(true)}>
+                  + Add Product
+                </button>
+              )}
+            </div>
+          </div>
 
-      {/* Modal: Add Client Company */}
+          {/* Sample Files Cards Grid */}
+          <div className="sp-card" style={{ padding: "20px" }}>
+            <h3 style={{ marginTop: 0, marginBottom: "16px", fontSize: "16px" }}>
+              CDR Sample Files ({taskFiles.length})
+            </h3>
+            {taskFiles.length === 0 ? (
+              <p style={{ color: "#64748b", fontSize: "13px" }}>No samples uploaded for this selection yet.</p>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: "16px" }}>
+                {taskFiles.map((file) => (
+                  <div
+                    key={file._id}
+                    style={{
+                      padding: "12px",
+                      borderRadius: "10px",
+                      backgroundColor: "#f8fafc",
+                      border: "1px solid var(--color-border)",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      textAlign: "center"
+                    }}
+                  >
+                    {file.thumbnailUrl ? (
+                      <img src={file.thumbnailUrl} alt={file.fileName} style={{ width: "140px", height: "110px", objectFit: "cover", borderRadius: "6px", marginBottom: "8px" }} />
+                    ) : (
+                      <div style={{ width: "140px", height: "110px", borderRadius: "6px", backgroundColor: "#e2e8f0", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "8px", fontSize: "12px", color: "#64748b" }}>
+                        📄 {file.fileName}
+                      </div>
+                    )}
+                    <div style={{ fontSize: "12px", fontWeight: "700", width: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {file.fileName}
+                    </div>
+                    <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "8px" }}>
+                      Product: {file.productName || "General"}
+                    </div>
+                    <div style={{ display: "flex", gap: "6px", width: "100%", justifyContent: "center" }}>
+                      {file.previewFileUrl && (
+                        <button
+                          className="sp-btn sp-btn-secondary sp-btn-sm"
+                          onClick={() => setPreviewPdfUrl(file.previewFileUrl)}
+                          style={{ fontSize: "11px", padding: "4px 8px" }}
+                        >
+                          👁️ Preview
+                        </button>
+                      )}
+                      <a
+                        href={`${API_BASE_URL}/api/task-files/${file._id}/download`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="sp-btn sp-btn-primary sp-btn-sm"
+                        style={{ fontSize: "11px", padding: "4px 8px", textDecoration: "none" }}
+                      >
+                        ⬇️ .CDR
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Add Company Modal */}
       {showAddCompanyModal && (
         <div
           style={{
@@ -368,12 +468,12 @@ function ClientCompany() {
             <form onSubmit={handleCreateCompany}>
               <div style={{ marginBottom: "16px" }}>
                 <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "6px" }}>
-                  Client Company Name
+                  Client Company Name *
                 </label>
                 <input
                   type="text"
                   className="sp-input"
-                  placeholder="e.g. Sun Pharma / CIPLA"
+                  placeholder="e.g. Goodman Pharma Ltd"
                   value={newCompanyName}
                   onChange={(e) => setNewCompanyName(e.target.value)}
                   required
@@ -393,7 +493,7 @@ function ClientCompany() {
         </div>
       )}
 
-      {/* Modal: Add Product */}
+      {/* Add Product Modal */}
       {showAddProductModal && (
         <div
           style={{
@@ -407,16 +507,16 @@ function ClientCompany() {
           }}
         >
           <div className="sp-card" style={{ width: "400px", padding: "24px", background: "#fff" }}>
-            <h3 style={{ marginTop: 0 }}>Add Product for {selectedCompany?.name}</h3>
+            <h3 style={{ marginTop: 0 }}>Add Product under {selectedCompany?.name}</h3>
             <form onSubmit={handleCreateProduct}>
               <div style={{ marginBottom: "16px" }}>
                 <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "6px" }}>
-                  Product Name
+                  Product Name *
                 </label>
                 <input
                   type="text"
                   className="sp-input"
-                  placeholder="e.g. Paracetamol 500mg Strip Foil"
+                  placeholder="e.g. Paracetamol 500mg"
                   value={newProductName}
                   onChange={(e) => setNewProductName(e.target.value)}
                   required
@@ -432,6 +532,41 @@ function ClientCompany() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* PDF Preview Modal */}
+      {previewPdfUrl && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(0,0,0,0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000
+          }}
+        >
+          <div className="sp-card" style={{ width: "700px", maxWidth: "90vw", padding: "24px", background: "#fff" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+              <h3 style={{ margin: 0 }}>👁️ Converted CDR Sample Preview</h3>
+              <button
+                onClick={() => setPreviewPdfUrl(null)}
+                style={{ background: "none", border: "none", fontSize: "18px", cursor: "pointer" }}
+              >
+                ✖
+              </button>
+            </div>
+            <div style={{ height: "450px", width: "100%" }}>
+              <iframe src={previewPdfUrl} style={{ width: "100%", height: "100%", border: "none" }} title="PDF Preview" />
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "16px" }}>
+              <button className="sp-btn sp-btn-secondary" onClick={() => setPreviewPdfUrl(null)}>
+                Close Preview
+              </button>
+            </div>
           </div>
         </div>
       )}
