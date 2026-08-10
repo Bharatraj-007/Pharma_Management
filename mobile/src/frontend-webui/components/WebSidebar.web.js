@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-nati
 
 const MENU_ITEMS = [
   { id: 'dashboard',     label: 'Dashboard',      icon: '📊' },
+  { id: 'clientCompany', label: 'Client Company', icon: '🏢' },
   { id: 'tasks',         label: 'Tasks',          icon: '📋' },
   { id: 'stock',         label: 'Stock',          icon: '📦' },
   { id: 'productMaster', label: 'Product Master', icon: '🏷️' },
