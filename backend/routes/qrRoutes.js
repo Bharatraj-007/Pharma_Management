@@ -102,7 +102,9 @@ router.get('/foil/:qrPayload/print', async (req, res) => {
   </style>
 </head>
 <body>
-  <div class="label">
+  
+
+label">
     <div class="info">
       <h2>FOIL QR LABEL</h2>
       <p><strong>Type:</strong> ${String(parsed.type).toUpperCase()}</p>

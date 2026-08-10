@@ -279,9 +279,10 @@ p { color: var(--color-text-secondary); margin-bottom: var(--space-3); }
 .sp-content {
   flex: 1;
   padding: 32px 40px;
-  max-width: 1400px;
-  overflow-y: auto;
+  max-width: 100%;
   width: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
 }
 
 .sp-sidebar .sidebar-brand {
@@ -352,12 +353,14 @@ p { color: var(--color-text-secondary); margin-bottom: var(--space-3); }
 /* ---------- 7. MAIN CONTENT ---------- */
 .sp-content {
   flex: 1;
-  padding: var(--space-8);
-  max-width: 960px;
+  padding: 32px 40px;
+  max-width: 100%;
+  width: 100%;
   overflow-y: auto;
+  box-sizing: border-box;
 }
 
-.sp-content-wide { max-width: 1200px; }
+.sp-content-wide { max-width: 100%; width: 100%; }
 
 .page-header {
   margin-bottom: var(--space-6);
@@ -750,7 +753,7 @@ p { color: var(--color-text-secondary); margin-bottom: var(--space-3); }
 }
 
 @media (min-width: 1025px) {
-  .sp-content { max-width: 1200px; margin: 0 auto; }
+  .sp-content { max-width: 100%; width: 100%; margin: 0; }
 }
 
 .sp-alert {

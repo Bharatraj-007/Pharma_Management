@@ -27,5 +27,5 @@ const styles = StyleSheet.create({
   layout: { flex: 1, backgroundColor: '#f8fafc' },
   body: { flex: 1, flexDirection: 'row' },
   content: { flex: 1, backgroundColor: '#f8fafc' },
-  contentContainer: { padding: 24 },
+  contentContainer: { padding: 24, width: '100%', maxWidth: '100%' },
 });
