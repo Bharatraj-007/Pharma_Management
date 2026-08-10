@@ -71,13 +71,6 @@ function Stock() {
   const [editCylinderData, setEditCylinderData] = useState(null);
   const [showEditCylinderModal, setShowEditCylinderModal] = useState(false);
 
-  const getTodayDateStr = () => new Date().toISOString().split('T')[0];
-  const getYesterdayDateStr = () => {
-    const d = new Date();
-    d.setDate(d.getDate() - 1);
-    return d.toISOString().split('T')[0];
-  };
-
   // ========== CYLINDER STATE (barcode-based UI retained) ==========
   const [cylinderClientCompany, setCylinderClientCompany] = useState("");
   const [cylinderProduct, setCylinderProduct] = useState("");

@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useState, useMemo } from "react";
 import API_BASE_URL from "../config";
-import { usePermissions } from "../hooks/usePermissions";
 
 function Attendance() {
-  const { isRole } = usePermissions();
   const userRole = (localStorage.getItem("role") || "worker").toLowerCase();
   const loggedInName = localStorage.getItem("name") || "Worker";
   const isAdminOrCeo = ["admin", "ceo"].includes(userRole);

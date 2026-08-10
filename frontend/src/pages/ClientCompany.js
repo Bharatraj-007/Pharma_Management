@@ -340,9 +340,20 @@ function ClientCompany() {
                     Click to view Products & CDR Samples
                   </p>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "8px" }}>
-                    <span style={{ fontSize: "11px", fontWeight: "700", color: "#334155", backgroundColor: "#e2e8f0", padding: "3px 8px", borderRadius: "10px" }}>
-                      Active Client
-                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span style={{ fontSize: "11px", fontWeight: "700", color: "#334155", backgroundColor: "#e2e8f0", padding: "3px 8px", borderRadius: "10px" }}>
+                        Active Client
+                      </span>
+                      {(role === "admin" || role === "ceo") && (
+                        <button
+                          onClick={(e) => handleDeleteCompany(comp._id, e)}
+                          title="Delete Company"
+                          style={{ border: "none", background: "transparent", color: "#ef4444", cursor: "pointer", fontSize: "14px", padding: "2px 4px" }}
+                        >
+                          🗑️
+                        </button>
+                      )}
+                    </div>
                     <span style={{ fontSize: "10px", color: "#94a3b8" }}>
                       Added {new Date(comp.createdAt).toLocaleDateString()}
                     </span>

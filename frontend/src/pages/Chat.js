@@ -21,7 +21,6 @@ function getUserIdFromToken(token) {
 }
 
 function Chat() {
-  const { role } = usePermissions();
   const token = localStorage.getItem("token");
   const myUserId = localStorage.getItem("userId") || localStorage.getItem("id") || getUserIdFromToken(token);
   const myName = localStorage.getItem("name") || "Me";

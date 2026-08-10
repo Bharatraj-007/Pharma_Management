@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
 import API_BASE_URL from "../config";
-import { usePermissions } from "../hooks/usePermissions";
 
 const COMPANY_NAMES = {
   bharath: "Bharath Enterprises",

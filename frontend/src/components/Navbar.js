@@ -18,8 +18,10 @@ function Navbar() {
         headers: { Authorization: token }
       });
       if (res.ok) {
-        const data = await res.json();
-        setNotifications(data);
+        const text = await res.text();
+        let data = [];
+        try { data = JSON.parse(text); } catch {}
+        setNotifications(Array.isArray(data) ? data : []);
       }
     } catch (err) {
       console.error(err);
