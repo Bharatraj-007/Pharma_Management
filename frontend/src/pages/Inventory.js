@@ -124,9 +124,12 @@ function Stock() {
         headers: { Authorization: localStorage.getItem("token") }
       });
 
-      if (!response.ok) throw new Error("Unable to load stock change logs");
-      const data = await response.json();
-      setStockLogs(data);
+      const text = await response.text();
+      let data = [];
+      try { data = JSON.parse(text); } catch {}
+
+      if (!response.ok) throw new Error((typeof data === "object" && data.error) || `HTTP ${response.status}: Unable to load stock change logs`);
+      setStockLogs(Array.isArray(data) ? data : []);
     } catch (err) {
       setLogsError(err.message);
     } finally {

@@ -5083,7 +5083,28 @@ if (fs.existsSync(frontendBuildPath)) {
                        req.path.startsWith("/leaves") || 
                        req.path.startsWith("/holidays") || 
                        req.path.startsWith("/inventory") || 
-                       req.path.startsWith("/audit-logs");
+                       req.path.startsWith("/audit-logs") ||
+                       req.path.startsWith("/stock-logs") ||
+                       req.path.startsWith("/foils") ||
+                       req.path.startsWith("/cylinders") ||
+                       req.path.startsWith("/add-foil") ||
+                       req.path.startsWith("/add-cylinder") ||
+                       req.path.startsWith("/reports") ||
+                       req.path.startsWith("/client-companies") ||
+                       req.path.startsWith("/client-products") ||
+                       req.path.startsWith("/task-files") ||
+                       req.path.startsWith("/financial") ||
+                       req.path.startsWith("/dispatch") ||
+                       req.path.startsWith("/products") ||
+                       req.path.startsWith("/auth") ||
+                       req.path.startsWith("/profile") ||
+                       req.path.startsWith("/company") ||
+                       req.path.startsWith("/requests") ||
+                       req.path.startsWith("/approve") ||
+                       req.path.startsWith("/reject") ||
+                       req.headers.authorization ||
+                       req.headers.accept?.includes("application/json");
+
     if (isApiRoute) {
       return next();
     }
@@ -5091,12 +5112,25 @@ if (fs.existsSync(frontendBuildPath)) {
   });
 }
 
+// 🚨 Global JSON 404 Handler for unhandled API endpoints
+app.use((req, res) => {
+  res.status(404).json({ error: `API route ${req.method} ${req.originalUrl} not found` });
+});
+
+// 🚨 Global JSON Error Handler
+app.use((err, req, res, next) => {
+  console.error("Unhandled Backend Error:", err);
+  if (res.headersSent) {
+    return next(err);
+  }
+  res.status(err.status || 500).json({ error: err.message || "Internal Server Error" });
+});
+
 const PORT = process.env.PORT || 5001;
-
-
 
 connectDatabase().then(() => {
   server.listen(PORT, () => console.log(`Server running on ${PORT}`));
 }).catch((err) => {
   console.error("Failed to start server:", err.message || err);
 });
+

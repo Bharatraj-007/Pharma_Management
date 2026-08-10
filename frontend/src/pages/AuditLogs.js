@@ -14,11 +14,12 @@ function AuditLogs() {
         const res = await fetch(`${API_BASE_URL}/audit-logs`, {
           headers: { Authorization: localStorage.getItem("token") }
         });
+        const text = await res.text();
+        let data = [];
+        try { data = JSON.parse(text); } catch {}
         if (!res.ok) {
-          const text = await res.text().catch(() => "");
-          throw new Error(text || "Unable to load audit logs");
+          throw new Error((typeof data === "object" && data.error) || `HTTP ${res.status}: Unable to load audit logs`);
         }
-        const data = await res.json();
         setLogs(Array.isArray(data) ? data : []);
       } catch (err) {
         setError(err.message || "Unable to load audit logs");

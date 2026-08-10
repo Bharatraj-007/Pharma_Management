@@ -32,11 +32,15 @@ function ClientCompany() {
         headers: { Authorization: token }
       });
       if (res.ok) {
-        const data = await res.json();
+        const text = await res.text();
+        let data = [];
+        try { data = JSON.parse(text); } catch {}
         setCompanies(Array.isArray(data) ? data : []);
       } else {
-        const err = await res.json().catch(() => ({}));
-        setErrorMsg(err.error || "Failed to load client companies");
+        const text = await res.text();
+        let err = {};
+        try { err = JSON.parse(text); } catch {}
+        setErrorMsg(err.error || `HTTP ${res.status}: Failed to load client companies`);
       }
     } catch (err) {
       setErrorMsg("Server error fetching client companies");
