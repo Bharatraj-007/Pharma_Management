@@ -143,11 +143,11 @@ function CEODashboard() {
       <div className="sp-card" style={{ marginTop: "12px" }}>
         <h3 style={{ marginTop: 0, marginBottom: "16px", fontSize: "16px" }}>⚡ Quick Actions</h3>
         <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-          <button className="sp-btn sp-btn-primary" onClick={() => navigate("/tasks")}>📋 View Tasks</button>
-          <button className="sp-btn sp-btn-secondary" onClick={() => navigate("/attendance")}>⏱️ Open Attendance</button>
-          <button className="sp-btn sp-btn-success" onClick={() => navigate("/leave")}>🗓️ Apply Leave</button>
-          <button className="sp-btn sp-btn-secondary" onClick={() => navigate("/stock")}>📦 Manage Inventory</button>
-          <button className="sp-btn sp-btn-warning" onClick={() => navigate("/user-management")}>👥 Approve Requests</button>
+          <button className="sp-btn sp-btn-primary" onClick={() => navigate("/tasks")}>View Tasks</button>
+          <button className="sp-btn sp-btn-secondary" onClick={() => navigate("/attendance")}>Open Attendance</button>
+          <button className="sp-btn sp-btn-success" onClick={() => navigate("/leave")}>Apply Leave</button>
+          <button className="sp-btn sp-btn-secondary" onClick={() => navigate("/stock")}>Manage Inventory</button>
+          <button className="sp-btn sp-btn-warning" onClick={() => navigate("/user-management")}>Approve Requests</button>
         </div>
       </div>
     </div>

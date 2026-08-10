@@ -108,12 +108,12 @@ export default function DashboardScreen({ apiBaseUrl, session, onNavigate }) {
       {/* Quick Actions */}
       <WebCard title="⚡ Quick Actions" style={{ marginTop: webSpacing.xxl }}>
         <View style={styles.actionRow}>
-          <WebBtn label="📋 View Tasks" onPress={() => onNavigate && onNavigate('tasks')} variant="primary" />
-          <WebBtn label="⏱️ Open Attendance" onPress={() => onNavigate && onNavigate('attendance')} variant="secondary" />
-          <WebBtn label="🗓️ Apply Leave" onPress={() => onNavigate && onNavigate('leaveManagement')} variant="success" />
-          <WebBtn label="📦 Manage Inventory" onPress={() => onNavigate && onNavigate('stock')} variant="secondary" />
+          <WebBtn label="View Tasks" onPress={() => onNavigate && onNavigate('tasks')} variant="primary" />
+          <WebBtn label="Open Attendance" onPress={() => onNavigate && onNavigate('attendance')} variant="secondary" />
+          <WebBtn label="Apply Leave" onPress={() => onNavigate && onNavigate('leaveManagement')} variant="success" />
+          <WebBtn label="Manage Inventory" onPress={() => onNavigate && onNavigate('stock')} variant="secondary" />
           {['admin', 'ceo'].includes(role) && (
-            <WebBtn label="👥 Approve Requests" onPress={() => onNavigate && onNavigate('userManagement')} variant="warning" />
+            <WebBtn label="Approve Requests" onPress={() => onNavigate && onNavigate('userManagement')} variant="warning" />
           )}
         </View>
       </WebCard>
